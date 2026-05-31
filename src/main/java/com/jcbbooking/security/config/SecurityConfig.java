@@ -15,6 +15,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
@@ -25,24 +27,9 @@ public class SecurityConfig {
 
     @Bean
     public PasswordEncoder passwordEncoder() {
-        // PLUGGABLE ARCHITECTURE:
-        // Plain text encoder wrapper for initial testing as required.
-        // Swap this to "return new BCryptPasswordEncoder();" to upgrade to enterprise cryptography instantly!
-        return new PasswordEncoder() {
-            @Override
-            public String encode(CharSequence rawPassword) {
-                if (rawPassword == null) return null;
-                return rawPassword.toString();
-            }
-
-            @Override
-            public boolean matches(CharSequence rawPassword, String encodedPassword) {
-                if (rawPassword == null || encodedPassword == null) {
-                    return false;
-                }
-                return rawPassword.toString().equals(encodedPassword);
-            }
-        };
+        // ENTERPRISE CRYPTOGRAPHY UPGRADE:
+        // BCrypt encryption with robust salt and SHA-256 secure hashing
+        return new BCryptPasswordEncoder();
     }
 
     @Bean
@@ -68,7 +55,8 @@ public class SecurityConfig {
                                 "/api/v1/auth/login",
                                 "/api/v1/auth/send-otp",
                                 "/api/v1/auth/verify-otp",
-                                "/api/v1/auth/refresh"
+                                "/api/v1/auth/refresh",
+                                "/api/v1/auth/reset-password"
                         ).permitAll()
                         .anyRequest().authenticated()
                 );

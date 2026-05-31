@@ -35,6 +35,21 @@ public class DatabaseInitializer implements CommandLineRunner {
             initializeData();
         } else {
             log.info("Database already contains data. Skipping initial seeding.");
+            log.info("Checking password hashes for secure BCrypt formatting...");
+            List<User> users = userRepository.findAll();
+            int migratedCount = 0;
+            for (User user : users) {
+                String hash = user.getPasswordHash();
+                if (hash != null && !hash.startsWith("$2a$") && !hash.startsWith("$2b$") && !hash.startsWith("$2y$")) {
+                    log.info("Legacy plaintext password detected for user: [{}]. Auto-encrypting to secure BCrypt hash...", user.getEmail());
+                    user.setPasswordHash(passwordEncoder.encode(hash));
+                    userRepository.save(user);
+                    migratedCount++;
+                }
+            }
+            if (migratedCount > 0) {
+                log.info("Successfully migrated {} legacy passwords to secure BCrypt hashes!", migratedCount);
+            }
         }
     }
 

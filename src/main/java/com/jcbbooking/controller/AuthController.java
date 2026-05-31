@@ -25,15 +25,39 @@ public class AuthController {
     }
 
     @PostMapping("/verify-otp")
-    public ResponseEntity<ApiResponse<AuthResponse>> verifyOtp(@Valid @RequestBody VerifyOtpRequest request) {
+    public ResponseEntity<ApiResponse<AuthResponse>> verifyOtp(
+            @Valid @RequestBody VerifyOtpRequest request,
+            @RequestHeader(value = "X-Client-App-Key", required = false) String appKey) {
         log.info("REST request to verify OTP login for phone: {}", request.getPhone());
+        
+        // App Secret Header Attestation for OTP verify login
+        String expectedWebKey = "rentron-web-admin-secret-key-108F9";
+        String expectedMobileKey = "rentron-driver-mobile-app-secret-key-294AB";
+        
+        if (appKey == null || (!appKey.equals(expectedWebKey) && !appKey.equals(expectedMobileKey))) {
+            log.warn("Unverified API Request: Missing or invalid X-Client-App-Key header on verify-otp: [{}]", appKey);
+            throw new com.jcbbooking.exception.AuthenticationException("Access denied: Invalid or missing X-Client-App-Key client app signature.");
+        }
+        
         AuthResponse response = authService.verifyOtpLogin(request);
         return ResponseEntity.ok(ApiResponse.success("OTP verified and login successful", response));
     }
 
     @PostMapping("/login")
-    public ResponseEntity<ApiResponse<AuthResponse>> login(@Valid @RequestBody LoginRequest request) {
+    public ResponseEntity<ApiResponse<AuthResponse>> login(
+            @Valid @RequestBody LoginRequest request,
+            @RequestHeader(value = "X-Client-App-Key", required = false) String appKey) {
         log.info("REST request for unified login of type: {}", request.getLoginType());
+        
+        // App Secret Header Attestation for unified login
+        String expectedWebKey = "rentron-web-admin-secret-key-108F9";
+        String expectedMobileKey = "rentron-driver-mobile-app-secret-key-294AB";
+        
+        if (appKey == null || (!appKey.equals(expectedWebKey) && !appKey.equals(expectedMobileKey))) {
+            log.warn("Unverified API Request: Missing or invalid X-Client-App-Key header on login: [{}]", appKey);
+            throw new com.jcbbooking.exception.AuthenticationException("Access denied: Invalid or missing X-Client-App-Key client app signature.");
+        }
+        
         AuthResponse response = authService.login(request);
         return ResponseEntity.ok(ApiResponse.success("Login successful", response));
     }
@@ -50,5 +74,24 @@ public class AuthController {
         log.info("REST request to log out and revoke refresh token");
         authService.logout(request.getRefreshToken());
         return ResponseEntity.ok(ApiResponse.success("Logged out successfully"));
+    }
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<ApiResponse<Void>> resetPassword(
+            @Valid @RequestBody ResetPasswordRequest request,
+            @RequestHeader(value = "X-Client-App-Key", required = false) String appKey) {
+        log.info("REST request to reset password for phone: {}", request.getPhone());
+        
+        // App Secret Header Attestation for reset-password
+        String expectedWebKey = "rentron-web-admin-secret-key-108F9";
+        String expectedMobileKey = "rentron-driver-mobile-app-secret-key-294AB";
+        
+        if (appKey == null || (!appKey.equals(expectedWebKey) && !appKey.equals(expectedMobileKey))) {
+            log.warn("Unverified API Request: Missing or invalid X-Client-App-Key header on reset-password: [{}]", appKey);
+            throw new com.jcbbooking.exception.AuthenticationException("Access denied: Invalid or missing X-Client-App-Key client app signature.");
+        }
+        
+        authService.resetPassword(request);
+        return ResponseEntity.ok(ApiResponse.success("Password has been reset successfully"));
     }
 }

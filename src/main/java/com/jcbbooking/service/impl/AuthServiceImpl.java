@@ -2,6 +2,8 @@ package com.jcbbooking.service.impl;
 
 import com.jcbbooking.dto.*;
 import com.jcbbooking.exception.AuthenticationException;
+import com.jcbbooking.exception.OtpException;
+import com.jcbbooking.exception.ResourceNotFoundException;
 import com.jcbbooking.model.*;
 import com.jcbbooking.repository.RefreshTokenRepository;
 import com.jcbbooking.repository.UserRepository;
@@ -44,13 +46,13 @@ public class AuthServiceImpl implements AuthService {
         try {
             purpose = OtpPurpose.valueOf(request.getPurpose().toUpperCase());
         } catch (IllegalArgumentException ex) {
-            throw new AuthenticationException("Invalid OTP purpose: " + request.getPurpose());
+            throw new OtpException("Invalid OTP purpose: " + request.getPurpose());
         }
 
         // If purpose is LOGIN or RESET_PASSWORD, check if user exists
         if (purpose == OtpPurpose.LOGIN || purpose == OtpPurpose.RESET_PASSWORD) {
             userRepository.findByPhone(request.getPhone())
-                    .orElseThrow(() -> new AuthenticationException("No registered account found with phone: " + request.getPhone()));
+                    .orElseThrow(() -> new ResourceNotFoundException("No registered account found with phone: " + request.getPhone()));
         }
 
         otpService.generateOtp(request.getPhone(), purpose);
@@ -81,6 +83,16 @@ public class AuthServiceImpl implements AuthService {
     public AuthResponse login(LoginRequest request) {
         log.info("Processing unified login request for type: {}", request.getLoginType());
         
+        // 1. Validate deviceType payload
+        String deviceType = request.getDeviceType();
+        if (deviceType == null || deviceType.trim().isEmpty()) {
+            throw new AuthenticationException("Device type (deviceType: WEB or MOBILE) is required");
+        }
+        deviceType = deviceType.toUpperCase().trim();
+        if (!deviceType.equals("WEB") && !deviceType.equals("MOBILE")) {
+            throw new AuthenticationException("Invalid device type. Allowed values: WEB, MOBILE");
+        }
+
         User user;
         String type = request.getLoginType().toUpperCase();
 
@@ -117,6 +129,18 @@ public class AuthServiceImpl implements AuthService {
                         .orElseThrow(() -> new AuthenticationException("User registration incomplete for phone: " + request.getPhone()));
             }
             default -> throw new AuthenticationException("Unsupported login type: " + request.getLoginType());
+        }
+
+        // 2. Enforce Device Type Restrictions based on User Role (Cross-Role Device Lockout)
+        Role role = user.getRole();
+        if (role == Role.ADMIN && !deviceType.equals("WEB")) {
+            throw new AuthenticationException("Access denied: Administrator accounts are restricted to WEB client logins only");
+        }
+        if (role == Role.CONTRACTOR && !deviceType.equals("WEB")) {
+            throw new AuthenticationException("Access denied: Contractor accounts are restricted to WEB client logins only");
+        }
+        if (role == Role.DRIVER && !deviceType.equals("MOBILE")) {
+            throw new AuthenticationException("Access denied: Driver accounts are restricted to MOBILE app logins only");
         }
 
         return generateUserSession(user);
@@ -232,5 +256,24 @@ public class AuthServiceImpl implements AuthService {
                 .permissions(permissions)
                 .menus(menus)
                 .build();
+    }
+
+    @Override
+    @Transactional
+    public void resetPassword(ResetPasswordRequest request) {
+        log.info("Processing reset password request for phone: {}", request.getPhone());
+        
+        // 1. Verify OTP code
+        otpService.verifyOtp(request.getPhone(), request.getOtpCode(), OtpPurpose.RESET_PASSWORD);
+        
+        // 2. Fetch User
+        User user = userRepository.findByPhone(request.getPhone())
+                .orElseThrow(() -> new AuthenticationException("No registered account found with phone: " + request.getPhone()));
+        
+        // 3. Re-encrypt and update password
+        user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+        userRepository.save(user);
+        
+        log.info("Password successfully reset for phone: {}", request.getPhone());
     }
 }
