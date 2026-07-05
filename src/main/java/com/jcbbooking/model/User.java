@@ -44,13 +44,17 @@ public class User {
     @Column(name = "active", nullable = false)
     private Boolean active = true;
 
-    @Builder.Default
-    @Column(name = "phone_verified", nullable = false)
-    private Boolean phoneVerified = false;
 
     @Builder.Default
-    @Column(name = "email_verified", nullable = false)
-    private Boolean emailVerified = false;
+    @Column(name = "total_bookings", nullable = false)
+    private Integer totalBookings = 0;
+
+    @Builder.Default
+    @Column(name = "wallet_balance", nullable = false)
+    private Double walletBalance = 0.0;
+
+    @Column(name = "address", length = 255)
+    private String address;
 
     @Column(name = "last_login_at")
     private LocalDateTime lastLoginAt;

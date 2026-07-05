@@ -196,22 +196,13 @@ public class AuthServiceImpl implements AuthService {
     }
 
     private void validateUserStatus(User user) {
-        // Rule 3 & 4: DRIVER and CONTRACTOR cannot login unless verified = true and active = true
-        if (user.getRole() == Role.DRIVER || user.getRole() == Role.CONTRACTOR) {
-            if (!Boolean.TRUE.equals(user.getVerified())) {
-                log.warn("Login blocked: {} account is not verified. Phone: {}", user.getRole(), user.getPhone());
-                throw new AuthenticationException("Your account is pending admin approval and verification");
-            }
-            if (!Boolean.TRUE.equals(user.getActive())) {
-                log.warn("Login blocked: {} account is inactive. Phone: {}", user.getRole(), user.getPhone());
-                throw new AuthenticationException("Your account has been deactivated. Please contact support");
-            }
-        } else {
-            // ADMIN and CUSTOMER only check active status
-            if (!Boolean.TRUE.equals(user.getActive())) {
-                log.warn("Login blocked: User account is inactive. Phone: {}", user.getPhone());
-                throw new AuthenticationException("Your account is currently suspended");
-            }
+        if (!Boolean.TRUE.equals(user.getVerified())) {
+            log.warn("Login blocked: User account is not verified. Phone: {}", user.getPhone());
+            throw new AuthenticationException("Your account is not verified");
+        }
+        if (!Boolean.TRUE.equals(user.getActive())) {
+            log.warn("Login blocked: User account is inactive. Phone: {}", user.getPhone());
+            throw new AuthenticationException("Your account is currently suspended");
         }
     }
 
@@ -226,12 +217,12 @@ public class AuthServiceImpl implements AuthService {
         // Generate tokens
         String accessToken = jwtTokenProvider.generateAccessToken(userDetails);
         
-        // Rule: Refresh Token stored in DB, 7 days expiry
+        // Rule: Refresh Token stored in DB, 100 years expiry (effectively never expires)
         String refreshTokenValue = UUID.randomUUID().toString();
         RefreshToken refreshToken = RefreshToken.builder()
                 .user(user)
                 .token(refreshTokenValue)
-                .expiryDate(LocalDateTime.now().plusDays(7)) // 7 days expiry
+                .expiryDate(LocalDateTime.now().plusYears(100))
                 .revoked(false)
                 .build();
         

@@ -9,6 +9,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import jakarta.persistence.EntityManager;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -24,11 +25,37 @@ public class DatabaseInitializer implements CommandLineRunner {
     private final RoleMenuAccessRepository roleMenuAccessRepository;
     private final RolePermissionAccessRepository rolePermissionAccessRepository;
     private final PasswordEncoder passwordEncoder;
+    private final EntityManager entityManager;
 
     @Override
     @Transactional
     public void run(String... args) throws Exception {
         log.info("Checking database state for initialization...");
+
+        // Automatically clean up deprecated verification columns from database if they exist
+        try {
+            Number emailExists = (Number) entityManager.createNativeQuery(
+                    "SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'email_verified' AND table_schema = DATABASE()")
+                    .getSingleResult();
+            if (emailExists != null && emailExists.intValue() > 0) {
+                entityManager.createNativeQuery("ALTER TABLE users DROP COLUMN email_verified").executeUpdate();
+                log.info("Successfully dropped email_verified column from users table");
+            }
+        } catch (Exception e) {
+            log.warn("Error checking/dropping email_verified column: {}", e.getMessage());
+        }
+
+        try {
+            Number phoneExists = (Number) entityManager.createNativeQuery(
+                    "SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'phone_verified' AND table_schema = DATABASE()")
+                    .getSingleResult();
+            if (phoneExists != null && phoneExists.intValue() > 0) {
+                entityManager.createNativeQuery("ALTER TABLE users DROP COLUMN phone_verified").executeUpdate();
+                log.info("Successfully dropped phone_verified column from users table");
+            }
+        } catch (Exception e) {
+            log.warn("Error checking/dropping phone_verified column: {}", e.getMessage());
+        }
 
         if (userRepository.count() == 0) {
             log.info("Database is empty. Commencing system seeding...");
@@ -209,8 +236,6 @@ public class DatabaseInitializer implements CommandLineRunner {
                 .role(role)
                 .verified(verified)
                 .active(active)
-                .phoneVerified(verified)
-                .emailVerified(verified)
                 .build();
         userRepository.save(user);
         log.info("Seeded User - Role: [{}], Phone: [{}], Password: [{}]", role, phone, password);

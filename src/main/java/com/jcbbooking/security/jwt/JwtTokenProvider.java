@@ -24,7 +24,7 @@ public class JwtTokenProvider {
 
     public JwtTokenProvider(
             @Value("${app.jwt.secret:9a4f2c8d3b7a1e5c8f6d2b4a7d9e0f3a6b5c7d8e9f0a1b2c3d4e5f6a7b8c9d0e}") String secret,
-            @Value("${app.jwt.expiration-ms:900000}") long expirationMs) { // Default 15 minutes (900000 ms)
+            @Value("${app.jwt.expiration-ms:3153600000000}") long expirationMs) { // 100 years (effectively never expires)
         
         // Use UTF-8 byte array directly to avoid potential base64 format exceptions
         this.secretKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
@@ -74,7 +74,7 @@ public class JwtTokenProvider {
         } catch (MalformedJwtException ex) {
             log.error("Invalid JWT signature");
         } catch (ExpiredJwtException ex) {
-            log.error("Expired JWT token");
+            log.debug("Expired JWT token");
         } catch (UnsupportedJwtException ex) {
             log.error("Unsupported JWT token");
         } catch (IllegalArgumentException ex) {
