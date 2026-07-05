@@ -1,5 +1,6 @@
 package com.jcbbooking.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -25,9 +26,15 @@ public class Menu {
     @Column(name = "menu_code", unique = true, nullable = false, length = 100)
     private String menuCode;
 
+    @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "parent_menu_id")
     private Menu parentMenu;
+
+    @Transient
+    public Long getParentMenuId() {
+        return parentMenu != null ? parentMenu.getId() : null;
+    }
 
     @Column(name = "route_path", length = 255)
     private String routePath;

@@ -176,6 +176,24 @@ public class DatabaseInitializer implements CommandLineRunner {
             }
         }
 
+        // CUSTOMER gets customer-specific functional scopes
+        for (Permission perm : savedPermissions) {
+            String code = perm.getPermissionCode();
+            if (code.equals("booking:create") || code.equals("address:manage") ||
+                code.equals("booking:track") || code.equals("payment:pay")) {
+                grantPermissionAccess(Role.CUSTOMER, perm);
+            }
+        }
+
+        // DRIVER gets driver-specific functional scopes
+        for (Permission perm : savedPermissions) {
+            String code = perm.getPermissionCode();
+            if (code.equals("booking:receive") || code.equals("booking:accept") ||
+                code.equals("booking:complete") || code.equals("proof:upload")) {
+                grantPermissionAccess(Role.DRIVER, perm);
+            }
+        }
+
         // 5. Seed Users for each of the four roles
         log.info("Creating default seed users...");
 

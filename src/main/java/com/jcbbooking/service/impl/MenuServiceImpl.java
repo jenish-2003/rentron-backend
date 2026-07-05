@@ -29,11 +29,6 @@ public class MenuServiceImpl implements MenuService {
     public List<MenuResponse> getMenusForRole(Role role) {
         log.info("Fetching menus for role: {}", role);
 
-        // Standard dynamic menu requirement: CUSTOMER & DRIVER have no backoffice admin panels, so return empty lists
-        if (role == Role.CUSTOMER || role == Role.DRIVER) {
-            return Collections.emptyList();
-        }
-
         List<RoleMenuAccess> accessList = roleMenuAccessRepository.findByRole(role);
         
         // Extract active menus
@@ -91,15 +86,7 @@ public class MenuServiceImpl implements MenuService {
     public List<String> getPermissionsForRole(Role role) {
         log.info("Fetching permissions for role: {}", role);
 
-        // CUSTOMER and DRIVER have explicit default permission list, or empty (RBAC can give base permissions)
-        if (role == Role.CUSTOMER) {
-            return List.of("booking:create", "address:manage", "booking:track", "payment:pay");
-        }
-        if (role == Role.DRIVER) {
-            return List.of("booking:receive", "booking:accept", "booking:complete", "proof:upload");
-        }
-
-        // ADMIN and CONTRACTOR load permissions directly from the role_permission_access table
+        // Load permissions directly from the role_permission_access table
         List<RolePermissionAccess> accessList = rolePermissionAccessRepository.findByRole(role);
         return accessList.stream()
                 .map(access -> access.getPermission().getPermissionCode())

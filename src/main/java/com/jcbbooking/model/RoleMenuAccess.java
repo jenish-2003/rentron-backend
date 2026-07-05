@@ -19,7 +19,7 @@ public class RoleMenuAccess {
     private Long id;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "role", nullable = false, columnDefinition = "ENUM('ADMIN', 'CONTRACTOR')")
+    @Column(name = "role", nullable = false, columnDefinition = "ENUM('ADMIN', 'CUSTOMER', 'CONTRACTOR', 'DRIVER')")
     private Role role;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
