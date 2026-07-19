@@ -26,6 +26,8 @@ public class DatabaseInitializer implements CommandLineRunner {
     private final RolePermissionAccessRepository rolePermissionAccessRepository;
     private final PasswordEncoder passwordEncoder;
     private final EntityManager entityManager;
+    private final DriverRepository driverRepository;
+    private final ContractorRepository contractorRepository;
 
     @Override
     @Transactional
@@ -208,6 +210,88 @@ public class DatabaseInitializer implements CommandLineRunner {
 
         // Customer Account
         createSeedUser("Robert Customer", "+919876543213", "robert@customer.com", "CustomerPassword123", Role.CUSTOMER, true, true);
+
+        // Seed Drivers
+        log.info("Seeding Driver applications...");
+        User seededDriverUser = userRepository.findByPhone("+919876543212").orElse(null);
+        driverRepository.save(Driver.builder()
+                .fullName("David Driver")
+                .phone("+919876543212")
+                .email("david@driver.com")
+                .userId(seededDriverUser != null ? seededDriverUser.getId() : null)
+                .licenseNumber("DL-0120210012345")
+                .aadhaarNumber("999988887777")
+                .experience("8 years")
+                .rating(4.8)
+                .totalJobs(66)
+                .totalEarnings(8500.0)
+                .status("ACTIVE")
+                .build());
+
+        driverRepository.save(Driver.builder()
+                .fullName("Rajesh Kumar")
+                .phone("+919811122333")
+                .email("rajesh.k@example.com")
+                .licenseNumber("DL-0120230045678")
+                .aadhaarNumber("444455554567")
+                .experience("6 years")
+                .rating(4.5)
+                .totalJobs(145)
+                .totalEarnings(12000.0)
+                .status("PENDING_VERIFICATION")
+                .build());
+
+        driverRepository.save(Driver.builder()
+                .fullName("Suresh Kumar")
+                .phone("+919811122334")
+                .email("suresh.k@example.com")
+                .licenseNumber("DL-0120240099999")
+                .aadhaarNumber("111122223333")
+                .experience("1.5 years")
+                .rating(3.8)
+                .totalJobs(10)
+                .totalEarnings(1500.0)
+                .status("OFFLINE")
+                .build());
+
+        driverRepository.save(Driver.builder()
+                .fullName("Ramesh Kumar")
+                .phone("+919811122335")
+                .email("ramesh.k@example.com")
+                .licenseNumber("DL-0120240088888")
+                .aadhaarNumber("555566667777")
+                .experience("5 years")
+                .rating(4.2)
+                .totalJobs(75)
+                .totalEarnings(7500.0)
+                .status("BUSY")
+                .build());
+
+        // Seed Contractors
+        log.info("Seeding Contractor applications...");
+        User seededContractorUser = userRepository.findByPhone("+919876543211").orElse(null);
+        contractorRepository.save(Contractor.builder()
+                .fullName("John Contractor")
+                .phone("+919876543211")
+                .email("john@contractor.com")
+                .userId(seededContractorUser != null ? seededContractorUser.getId() : null)
+                .companyName("John Construction Co.")
+                .gstNumber("29ABCDE1234F1Z5")
+                .experience("12 years")
+                .rating(4.7)
+                .status("ACTIVE")
+                .build());
+
+        contractorRepository.save(Contractor.builder()
+                .fullName("Beta Builders")
+                .phone("+919811122341")
+                .email("beta@builders.com")
+                .companyName("Beta Builders Pvt Ltd")
+                .gstNumber("29BBBBB2222B1Z2")
+                .experience("3 years")
+                .rating(4.0)
+                .status("PENDING_VERIFICATION")
+                .build());
 
         log.info("System successfully seeded and ready!");
     }

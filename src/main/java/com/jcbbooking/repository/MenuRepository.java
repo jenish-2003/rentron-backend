@@ -10,4 +10,8 @@ import java.util.List;
 public interface MenuRepository extends JpaRepository<Menu, Long> {
 
     List<Menu> findByActiveTrueOrderByDisplayOrderAsc();
+
+    List<Menu> findAllByOrderByDisplayOrderAsc();
+
+    boolean existsByMenuCode(String menuCode);
 }
