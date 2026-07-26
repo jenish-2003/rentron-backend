@@ -68,6 +68,47 @@ public class ContractorController {
             if (existing == null) {
                 return ResponseEntity.notFound().build();
             }
+
+            // Sync User creation if status is set to ACTIVE
+            if ("ACTIVE".equals(contractor.getStatus()) && !"ACTIVE".equals(existing.getStatus())) {
+                User user = userRepository.findByPhone(existing.getPhone()).orElse(null);
+                if (user == null) {
+                    user = User.builder()
+                            .fullName(existing.getFullName())
+                            .phone(existing.getPhone())
+                            .email(existing.getEmail())
+                            .role(Role.CONTRACTOR)
+                            .contractorId(existing.getId())
+                            .active(true)
+                            .verified(true)
+                            .passwordHash(passwordEncoder.encode("Password123"))
+                            .build();
+                    user = userRepository.save(user);
+                } else {
+                    user.setActive(true);
+                    user.setRole(Role.CONTRACTOR);
+                    user.setContractorId(existing.getId());
+                    user = userRepository.save(user);
+                }
+                existing.setUserId(user.getId());
+            }
+
+            // Sync User deactivation if status is set to SUSPENDED
+            if ("SUSPENDED".equals(contractor.getStatus()) && !"SUSPENDED".equals(existing.getStatus())) {
+                if (existing.getUserId() != null) {
+                    userRepository.findById(existing.getUserId()).ifPresent(user -> {
+                        user.setActive(false);
+                        userRepository.save(user);
+                    });
+                } else {
+                    userRepository.findByPhone(existing.getPhone()).ifPresent(user -> {
+                        user.setActive(false);
+                        userRepository.save(user);
+                        existing.setUserId(user.getId());
+                    });
+                }
+            }
+
             // Update fields
             existing.setFullName(contractor.getFullName());
             existing.setPhone(contractor.getPhone());
@@ -102,6 +143,7 @@ public class ContractorController {
                     .phone(contractor.getPhone())
                     .email(contractor.getEmail())
                     .role(Role.CONTRACTOR)
+                    .contractorId(contractor.getId())
                     .active(true)
                     .verified(true)
                     .passwordHash(passwordEncoder.encode("Password123"))
@@ -110,6 +152,7 @@ public class ContractorController {
         } else {
             user.setActive(true);
             user.setRole(Role.CONTRACTOR);
+            user.setContractorId(contractor.getId());
             user = userRepository.save(user);
         }
 
@@ -149,6 +192,12 @@ public class ContractorController {
                 user.setActive(false);
                 userRepository.save(user);
             });
+        } else {
+            userRepository.findByPhone(contractor.getPhone()).ifPresent(user -> {
+                user.setActive(false);
+                userRepository.save(user);
+                contractor.setUserId(user.getId());
+            });
         }
         Contractor saved = contractorRepository.save(contractor);
         return ResponseEntity.ok(ApiResponse.success("Contractor suspended successfully and user account deactivated", saved));
@@ -168,6 +217,12 @@ public class ContractorController {
             userRepository.findById(contractor.getUserId()).ifPresent(user -> {
                 user.setActive(true);
                 userRepository.save(user);
+            });
+        } else {
+            userRepository.findByPhone(contractor.getPhone()).ifPresent(user -> {
+                user.setActive(true);
+                userRepository.save(user);
+                contractor.setUserId(user.getId());
             });
         }
         Contractor saved = contractorRepository.save(contractor);

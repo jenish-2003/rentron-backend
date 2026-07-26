@@ -90,6 +90,47 @@ public class DriverController {
             if (existing == null) {
                 return ResponseEntity.notFound().build();
             }
+
+            // Sync User creation if status is set to ACTIVE
+            if ("ACTIVE".equals(driver.getStatus()) && !"ACTIVE".equals(existing.getStatus())) {
+                User user = userRepository.findByPhone(existing.getPhone()).orElse(null);
+                if (user == null) {
+                    user = User.builder()
+                            .fullName(existing.getFullName())
+                            .phone(existing.getPhone())
+                            .email(existing.getEmail())
+                            .role(Role.DRIVER)
+                            .driverId(existing.getId())
+                            .active(true)
+                            .verified(true)
+                            .passwordHash(passwordEncoder.encode("Password123"))
+                            .build();
+                    user = userRepository.save(user);
+                } else {
+                    user.setActive(true);
+                    user.setRole(Role.DRIVER);
+                    user.setDriverId(existing.getId());
+                    user = userRepository.save(user);
+                }
+                existing.setUserId(user.getId());
+            }
+
+            // Sync User deactivation if status is set to SUSPENDED
+            if ("SUSPENDED".equals(driver.getStatus()) && !"SUSPENDED".equals(existing.getStatus())) {
+                if (existing.getUserId() != null) {
+                    userRepository.findById(existing.getUserId()).ifPresent(user -> {
+                        user.setActive(false);
+                        userRepository.save(user);
+                    });
+                } else {
+                    userRepository.findByPhone(existing.getPhone()).ifPresent(user -> {
+                        user.setActive(false);
+                        userRepository.save(user);
+                        existing.setUserId(user.getId());
+                    });
+                }
+            }
+
             // Update fields
             existing.setFullName(driver.getFullName());
             existing.setPhone(driver.getPhone());
@@ -127,6 +168,7 @@ public class DriverController {
                     .phone(driver.getPhone())
                     .email(driver.getEmail())
                     .role(Role.DRIVER)
+                    .driverId(driver.getId())
                     .active(true)
                     .verified(true)
                     .passwordHash(passwordEncoder.encode("Password123"))
@@ -135,6 +177,7 @@ public class DriverController {
         } else {
             user.setActive(true);
             user.setRole(Role.DRIVER);
+            user.setDriverId(driver.getId());
             user = userRepository.save(user);
         }
 
@@ -174,6 +217,12 @@ public class DriverController {
                 user.setActive(false);
                 userRepository.save(user);
             });
+        } else {
+            userRepository.findByPhone(driver.getPhone()).ifPresent(user -> {
+                user.setActive(false);
+                userRepository.save(user);
+                driver.setUserId(user.getId());
+            });
         }
         Driver saved = driverRepository.save(driver);
         return ResponseEntity.ok(ApiResponse.success("Driver suspended successfully and user account deactivated", saved));
@@ -193,6 +242,12 @@ public class DriverController {
             userRepository.findById(driver.getUserId()).ifPresent(user -> {
                 user.setActive(true);
                 userRepository.save(user);
+            });
+        } else {
+            userRepository.findByPhone(driver.getPhone()).ifPresent(user -> {
+                user.setActive(true);
+                userRepository.save(user);
+                driver.setUserId(user.getId());
             });
         }
         Driver saved = driverRepository.save(driver);

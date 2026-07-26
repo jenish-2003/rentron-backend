@@ -36,6 +36,12 @@ public class User {
     @Column(name = "role", nullable = false, columnDefinition = "ENUM('ADMIN', 'CUSTOMER', 'CONTRACTOR', 'DRIVER')")
     private Role role;
 
+    @Column(name = "driver_id")
+    private Long driverId;
+
+    @Column(name = "contractor_id")
+    private Long contractorId;
+
     @Builder.Default
     @Column(name = "verified", nullable = false)
     private Boolean verified = false;
