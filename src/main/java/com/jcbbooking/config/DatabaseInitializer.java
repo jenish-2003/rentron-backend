@@ -158,8 +158,9 @@ public class DatabaseInitializer implements CommandLineRunner {
         Menu support = updateOrCreateMenu("Support", "support", null, "/support", "chat-icon", 6);
         Menu settings = updateOrCreateMenu("Setting", "settings", null, "/settings", "settings-icon", 7);
 
-        Menu menuSetup = updateOrCreateMenu("Menu Management", "menu_setup", settings, "/settings/menus", "list-icon", 1);
-        Menu permissionSetup = updateOrCreateMenu("Permission Setup", "permission_setup", settings, "/settings/permissions", "shield-icon", 2);
+        Menu bookingSetting = updateOrCreateMenu("Booking Settings", "booking_settings", settings, "/settings/booking", "sliders-icon", 1);
+        Menu menuSetup = updateOrCreateMenu("Menu Management", "menu_setup", settings, "/settings/menus", "list-icon", 2);
+        Menu permissionSetup = updateOrCreateMenu("Permission Setup", "permission_setup", settings, "/settings/permissions", "shield-icon", 3);
 
         // 4. Set up Role-Permission mappings
         log.info("Mapping permissions to roles...");

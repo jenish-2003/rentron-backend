@@ -32,6 +32,7 @@ public class BookingController {
     private final ContractorRepository contractorRepository;
     private final DriverRepository driverRepository;
     private final PricingService pricingService;
+    private final com.jcbbooking.service.BookingAssignmentService bookingAssignmentService;
 
     @GetMapping
     public ResponseEntity<ApiResponse<List<Booking>>> getBookings(@AuthenticationPrincipal CustomUserDetails userDetails) {
@@ -158,8 +159,26 @@ public class BookingController {
         // Atomically clear customer cart after confirmation
         cartRepository.deleteAllByCustomerId(customerId);
 
+        // Trigger Progressive Auto-Assignment Engine
+        bookingAssignmentService.startAutoAssignmentProcess(savedBooking.getId());
+
         log.info("Booking confirmed successfully. Booking Number: {}", savedBooking.getBookingNumber());
         return ResponseEntity.ok(ApiResponse.success("Booking confirmed successfully", savedBooking));
+    }
+
+    @PostMapping("/{id}/accept")
+    public ResponseEntity<ApiResponse<String>> acceptBookingOffer(
+            @PathVariable Long id,
+            @RequestParam String candidateType,
+            @RequestParam Long candidateId,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+        log.info("REST request by {} ID {} to accept booking offer for booking ID {}", candidateType, candidateId, id);
+        boolean success = bookingAssignmentService.acceptBookingOffer(id, candidateType, candidateId, userDetails.getId());
+        if (success) {
+            return ResponseEntity.ok(ApiResponse.success("Booking offer accepted successfully", "ASSIGNED"));
+        } else {
+            return ResponseEntity.status(409).body(ApiResponse.error("BOOKING_ALREADY_ASSIGNED: This booking has already been assigned to another candidate"));
+        }
     }
 
     @PostMapping("/{id}/assign-driver")

@@ -57,6 +57,18 @@ public class Driver {
     @Column(name = "status", nullable = false, length = 50)
     private String status = "PENDING_VERIFICATION"; // PENDING_VERIFICATION, ACTIVE, OFFLINE, BUSY, SUSPENDED
 
+    @Column(name = "latitude")
+    private Double latitude;
+
+    @Column(name = "longitude")
+    private Double longitude;
+
+    @Column(name = "gps_accuracy")
+    private Double gpsAccuracy;
+
+    @Column(name = "location_updated_at")
+    private LocalDateTime locationUpdatedAt;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false, columnDefinition = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
     private LocalDateTime createdAt;
