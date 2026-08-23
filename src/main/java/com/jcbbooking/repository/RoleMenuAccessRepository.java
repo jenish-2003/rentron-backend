@@ -11,4 +11,5 @@ import java.util.List;
 public interface RoleMenuAccessRepository extends JpaRepository<RoleMenuAccess, Long> {
 
     List<RoleMenuAccess> findByRole(Role role);
+    boolean existsByRoleAndMenu(Role role, com.jcbbooking.model.Menu menu);
 }

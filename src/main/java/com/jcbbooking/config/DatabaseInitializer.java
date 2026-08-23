@@ -63,7 +63,7 @@ public class DatabaseInitializer implements CommandLineRunner {
             log.info("Database is empty. Commencing system seeding...");
             initializeData();
         } else {
-            log.info("Database already contains data. Skipping initial seeding.");
+            log.info("Database already contains data. Dynamic menus active from database.");
             log.info("Checking password hashes for secure BCrypt formatting...");
             List<User> users = userRepository.findAll();
             int migratedCount = 0;
@@ -80,6 +80,39 @@ public class DatabaseInitializer implements CommandLineRunner {
                 log.info("Successfully migrated {} legacy passwords to secure BCrypt hashes!", migratedCount);
             }
         }
+    }
+
+    private Menu updateOrCreateMenu(String name, String code, Menu parent, String path, String icon, int order) {
+        Menu menu = menuRepository.findAll().stream()
+                .filter(m -> code.equalsIgnoreCase(m.getMenuCode()))
+                .findFirst()
+                .orElse(null);
+        if (menu == null) {
+            menu = Menu.builder()
+                    .menuCode(code)
+                    .menuName(name)
+                    .routePath(path)
+                    .icon(icon)
+                    .displayOrder(order)
+                    .parentMenu(parent)
+                    .active(true)
+                    .build();
+        } else {
+            // Preserve user's active/inactive setting for existing menus
+            menu.setMenuName(name);
+            menu.setRoutePath(path);
+            menu.setIcon(icon);
+            menu.setDisplayOrder(order);
+            if (menu.getActive() == null) {
+                menu.setActive(true);
+            }
+        }
+        menu = menuRepository.save(menu);
+
+        if (!roleMenuAccessRepository.existsByRoleAndMenu(Role.ADMIN, menu)) {
+            roleMenuAccessRepository.save(RoleMenuAccess.builder().role(Role.ADMIN).menu(menu).build());
+        }
+        return menu;
     }
 
     private void initializeData() {
@@ -114,48 +147,18 @@ public class DatabaseInitializer implements CommandLineRunner {
 
         List<Permission> savedPermissions = permissionRepository.saveAll(permissions);
 
-        // 2. Seed Menus (with hierarchical submenus)
-        log.info("Seeding system menus...");
-        
-        Menu dashboard = createMenu("Dashboard", "dashboard", null, "/dashboard", "dashboard-icon", 1);
-        Menu contractorMgmt = createMenu("Contractor Management", "contractors", null, "/contractors", "people-icon", 2);
-        Menu driverMgmt = createMenu("Driver Management", "drivers", null, "/drivers", "truck-icon", 3);
-        Menu bookingMgmt = createMenu("Booking Monitoring", "bookings", null, "/bookings", "calendar-icon", 4);
-        Menu paymentMgmt = createMenu("Earnings & Payments", "payments", null, "/payments", "money-icon", 5);
-        Menu settingsMgmt = createMenu("Settings & Permissions", "settings", null, "/settings", "settings-icon", 6);
+        // 2. Seed initial default menus if database is empty
+        log.info("Seeding initial system menus...");
+        Menu dashboard = updateOrCreateMenu("Dashboard", "dashboard", null, "/dashboard", "dashboard-icon", 1);
+        Menu partner = updateOrCreateMenu("Partner", "partners", null, "/partners", "people-icon", 2);
+        Menu product = updateOrCreateMenu("Product", "products", null, "/products", "box-icon", 3);
+        Menu booking = updateOrCreateMenu("Booking", "bookings", null, "/bookings", "calendar-icon", 4);
+        Menu payment = updateOrCreateMenu("Payment", "payments", null, "/payments", "money-icon", 5);
+        Menu support = updateOrCreateMenu("Support", "support", null, "/support", "chat-icon", 6);
+        Menu settings = updateOrCreateMenu("Setting", "settings", null, "/settings", "settings-icon", 7);
 
-        dashboard = menuRepository.save(dashboard);
-        contractorMgmt = menuRepository.save(contractorMgmt);
-        driverMgmt = menuRepository.save(driverMgmt);
-        bookingMgmt = menuRepository.save(bookingMgmt);
-        paymentMgmt = menuRepository.save(paymentMgmt);
-        settingsMgmt = menuRepository.save(settingsMgmt);
-
-        // Submenus for settings
-        Menu menuSetup = createMenu("Menu Management", "menu_setup", settingsMgmt, "/settings/menus", "list-icon", 1);
-        Menu permissionSetup = createMenu("Permission Setup", "permission_setup", settingsMgmt, "/settings/permissions", "shield-icon", 2);
-
-        menuRepository.save(menuSetup);
-        menuRepository.save(permissionSetup);
-
-        // 3. Set up Role-Menu mappings
-        log.info("Mapping menus to roles...");
-        
-        // ADMIN gets all root menus
-        grantMenuAccess(Role.ADMIN, dashboard);
-        grantMenuAccess(Role.ADMIN, contractorMgmt);
-        grantMenuAccess(Role.ADMIN, driverMgmt);
-        grantMenuAccess(Role.ADMIN, bookingMgmt);
-        grantMenuAccess(Role.ADMIN, paymentMgmt);
-        grantMenuAccess(Role.ADMIN, settingsMgmt);
-        grantMenuAccess(Role.ADMIN, menuSetup);
-        grantMenuAccess(Role.ADMIN, permissionSetup);
-
-        // CONTRACTOR gets limited root menus
-        grantMenuAccess(Role.CONTRACTOR, dashboard);
-        grantMenuAccess(Role.CONTRACTOR, driverMgmt);       // Map to own drivers
-        grantMenuAccess(Role.CONTRACTOR, bookingMgmt);      // Assigned bookings
-        grantMenuAccess(Role.CONTRACTOR, paymentMgmt);      // View earnings
+        Menu menuSetup = updateOrCreateMenu("Menu Management", "menu_setup", settings, "/settings/menus", "list-icon", 1);
+        Menu permissionSetup = updateOrCreateMenu("Permission Setup", "permission_setup", settings, "/settings/permissions", "shield-icon", 2);
 
         // 4. Set up Role-Permission mappings
         log.info("Mapping permissions to roles...");
