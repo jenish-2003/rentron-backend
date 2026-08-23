@@ -52,6 +52,9 @@ public class AddressController {
             address.setId(null);
             address.setUserId(userDetails.getId());
             address.setActive(true);
+            if (address.getIsDefault() == null) {
+                address.setIsDefault(false);
+            }
         } else {
             Address existing = addressRepository.findByIdAndUserId(address.getId(), userDetails.getId()).orElse(null);
             if (existing == null) {

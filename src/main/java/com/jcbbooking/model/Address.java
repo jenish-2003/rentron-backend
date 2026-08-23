@@ -66,6 +66,16 @@ public class Address {
     @Column(name = "active", nullable = false)
     private Boolean active = true;
 
+    @PrePersist
+    public void prePersist() {
+        if (this.isDefault == null) {
+            this.isDefault = false;
+        }
+        if (this.active == null) {
+            this.active = true;
+        }
+    }
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false, columnDefinition = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
     private LocalDateTime createdAt;
