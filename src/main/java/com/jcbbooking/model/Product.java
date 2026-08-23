@@ -34,6 +34,9 @@ public class Product {
     @Column(name = "description", columnDefinition = "TEXT")
     private String description;
 
+    @Column(name = "image_url", columnDefinition = "LONGTEXT")
+    private String imageUrl; // Single or multiple base64 / URL images
+
     @Builder.Default
     @Column(name = "active", nullable = false)
     private Boolean active = true;

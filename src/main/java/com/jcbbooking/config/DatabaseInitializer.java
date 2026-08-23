@@ -28,6 +28,7 @@ public class DatabaseInitializer implements CommandLineRunner {
     private final EntityManager entityManager;
     private final DriverRepository driverRepository;
     private final ContractorRepository contractorRepository;
+    private final ProductRepository productRepository;
 
     @Override
     @Transactional
@@ -295,6 +296,41 @@ public class DatabaseInitializer implements CommandLineRunner {
                 .rating(4.0)
                 .status("PENDING_VERIFICATION")
                 .build());
+        // Migration & Seeding for Products & Pricing Rules
+        productRepository.findAll().forEach(p -> {
+            String pName = p.getName() != null ? p.getName().toUpperCase() : "";
+            String pCode = p.getCode() != null ? p.getCode().toUpperCase() : "";
+            String pType = p.getProductType() != null ? p.getProductType().toUpperCase() : "";
+
+            if (pName.contains("JCB") || pCode.contains("JCB") || pName.contains("EXCAVATOR") || pCode.contains("EXC") || "JCB".equals(pType)) {
+                p.setProductType("HEAVY_EQUIPMENT");
+                productRepository.save(p);
+            } else if (pName.contains("BIKE") || pName.contains("AUTO") || pName.contains("CAR") || "BIKE_RIDE".equals(pType)) {
+                p.setProductType("RIDE");
+                productRepository.save(p);
+            }
+        });
+
+        if (productRepository.count() == 0) {
+            log.info("Seeding default products...");
+            Product jcb = productRepository.save(Product.builder()
+                    .name("JCB 3CX Backhoe Loader")
+                    .code("JCB_3CX")
+                    .productType("HEAVY_EQUIPMENT")
+                    .category("HEAVY_EQUIPMENT")
+                    .description("Heavy duty excavation & backhoe loading machine")
+                    .active(true)
+                    .build());
+
+            Product bike = productRepository.save(Product.builder()
+                    .name("Bike Taxi")
+                    .code("BIKE")
+                    .productType("RIDE")
+                    .category("BIKE")
+                    .description("Fast 2-wheeler city bike ride")
+                    .active(true)
+                    .build());
+        }
 
         log.info("System successfully seeded and ready!");
     }

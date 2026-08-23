@@ -8,7 +8,9 @@ import org.hibernate.annotations.UpdateTimestamp;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "pricings")
+@Table(name = "pricings", uniqueConstraints = {
+    @UniqueConstraint(name = "UK_PRICINGS_PRODUCT", columnNames = {"product_id"})
+})
 @Data
 @Builder
 @NoArgsConstructor
@@ -19,8 +21,14 @@ public class Pricing {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "product_id", nullable = false)
+    @Column(name = "product_id", nullable = false, unique = true)
     private Long productId;
+
+    @Column(name = "pricing_model", length = 50)
+    private String pricingModel; // RIDE or HEAVY_EQUIPMENT
+
+    @Column(name = "charging_method", length = 50)
+    private String chargingMethod; // HOURLY, DAILY, HOURLY_DAILY
 
     @Builder.Default
     @Column(name = "base_price", nullable = false)
@@ -37,6 +45,18 @@ public class Pricing {
     @Builder.Default
     @Column(name = "per_hour_price", nullable = false)
     private Double perHourPrice = 0.0;
+
+    @Builder.Default
+    @Column(name = "daily_rate")
+    private Double dailyRate = 0.0;
+
+    @Builder.Default
+    @Column(name = "extra_hour_rate")
+    private Double extraHourRate = 0.0;
+
+    @Builder.Default
+    @Column(name = "discount")
+    private Double discount = 0.0;
 
     @Builder.Default
     @Column(name = "minimum_fare", nullable = false)

@@ -48,13 +48,29 @@ public class PricingController {
     }
 
     @GetMapping("/calculate")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> calculatePrice(
+    public ResponseEntity<ApiResponse<Map<String, Object>>> calculatePriceGet(
             @RequestParam Long productId,
             @RequestParam(required = false, defaultValue = "0.0") Double distanceKm,
             @RequestParam(required = false, defaultValue = "0.0") Double durationHours,
             @RequestParam(required = false, defaultValue = "0.0") Double waitingMinutes) {
-        log.info("REST request to calculate price for product ID: {}", productId);
+        log.info("REST request (GET) to calculate price for product ID: {}", productId);
         try {
+            Map<String, Object> estimation = pricingService.calculatePrice(productId, distanceKm, durationHours, waitingMinutes);
+            return ResponseEntity.ok(ApiResponse.success("Price calculation successful", estimation));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
+    @PostMapping("/calculate")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> calculatePricePost(@RequestBody Map<String, Object> req) {
+        log.info("REST request (POST) to calculate price: {}", req);
+        try {
+            Long productId = Long.valueOf(req.get("productId").toString());
+            Double distanceKm = req.containsKey("distanceKm") ? Double.valueOf(req.get("distanceKm").toString()) : 0.0;
+            Double durationHours = req.containsKey("durationHours") ? Double.valueOf(req.get("durationHours").toString()) : 0.0;
+            Double waitingMinutes = req.containsKey("waitingMinutes") ? Double.valueOf(req.get("waitingMinutes").toString()) : 0.0;
+
             Map<String, Object> estimation = pricingService.calculatePrice(productId, distanceKm, durationHours, waitingMinutes);
             return ResponseEntity.ok(ApiResponse.success("Price calculation successful", estimation));
         } catch (Exception e) {

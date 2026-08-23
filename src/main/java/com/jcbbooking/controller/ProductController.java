@@ -54,6 +54,7 @@ public class ProductController {
             existing.setProductType(product.getProductType());
             existing.setCategory(product.getCategory());
             existing.setDescription(product.getDescription());
+            existing.setImageUrl(product.getImageUrl());
             if (product.getActive() != null) {
                 existing.setActive(product.getActive());
             }
@@ -62,6 +63,81 @@ public class ProductController {
 
         Product saved = productRepository.save(product);
         return ResponseEntity.ok(ApiResponse.success(isNew ? "Product created successfully" : "Product updated successfully", saved));
+    }
+
+    @org.springframework.beans.factory.annotation.Value("${core.fileTransfer.primaryUploadFolder:/opt/microservice/upload/images}")
+    private String primaryUploadFolder;
+
+    private String resolveBaseDirectory() {
+        String baseDirStr = primaryUploadFolder;
+        try {
+            java.io.File baseDir = new java.io.File(baseDirStr);
+            if (!baseDir.exists()) {
+                baseDir.mkdirs();
+            }
+            if (!baseDir.canWrite()) {
+                baseDirStr = System.getProperty("user.dir") + java.io.File.separator + "uploads" + java.io.File.separator + "images";
+                new java.io.File(baseDirStr).mkdirs();
+            }
+        } catch (Exception ex) {
+            log.warn("Lacking permissions for configured path: {}. Falling back to workspace folders.", baseDirStr);
+            baseDirStr = System.getProperty("user.dir") + java.io.File.separator + "uploads" + java.io.File.separator + "images";
+            new java.io.File(baseDirStr).mkdirs();
+        }
+        return baseDirStr;
+    }
+
+    @PostMapping("/{id}/upload-images")
+    public ResponseEntity<ApiResponse<Product>> uploadProductImages(
+            @PathVariable Long id,
+            @RequestParam("files") org.springframework.web.multipart.MultipartFile[] files) {
+        log.info("REST request to upload {} files for product ID: {}", files != null ? files.length : 0, id);
+        Product product = productRepository.findById(id).orElse(null);
+        if (product == null) {
+            return ResponseEntity.notFound().build();
+        }
+
+        try {
+            String baseDirStr = resolveBaseDirectory();
+            String targetFolderStr = baseDirStr + java.io.File.separator + "product" + java.io.File.separator + id;
+            java.io.File targetFolder = new java.io.File(targetFolderStr);
+            if (!targetFolder.exists()) {
+                targetFolder.mkdirs();
+            }
+
+            java.util.List<String> uploadedUrls = new java.util.ArrayList<>();
+            if (files != null) {
+                for (org.springframework.web.multipart.MultipartFile file : files) {
+                    if (file.isEmpty()) continue;
+                    String originalFilename = file.getOriginalFilename();
+                    String cleanName = System.currentTimeMillis() + "_" + (originalFilename != null ? originalFilename.replaceAll("[^a-zA-Z0-9._-]", "_") : "image.jpg");
+                    
+                    java.nio.file.Path destinationPath = java.nio.file.Paths.get(targetFolderStr, cleanName);
+                    java.nio.file.Files.copy(file.getInputStream(), destinationPath, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+
+                    uploadedUrls.add("/uploads/product/" + id + "/" + cleanName);
+                }
+            }
+
+            java.util.List<String> currentList = new java.util.ArrayList<>();
+            String existingStr = product.getImageUrl();
+            if (existingStr != null && !existingStr.trim().isEmpty()) {
+                String clean = existingStr.replaceAll("[\\[\\]\"]", "");
+                for (String part : clean.split(",")) {
+                    if (!part.trim().isEmpty()) {
+                        currentList.add(part.trim());
+                    }
+                }
+            }
+            currentList.addAll(uploadedUrls);
+
+            product.setImageUrl(String.join(",", currentList));
+            Product saved = productRepository.save(product);
+            return ResponseEntity.ok(ApiResponse.success("Images saved to C:\\opt\\microservice\\upload\\images\\product\\" + id, saved));
+        } catch (Exception e) {
+            log.error("Error saving product images", e);
+            return ResponseEntity.internalServerError().body(ApiResponse.error("Image upload failed: " + e.getMessage()));
+        }
     }
 
     @DeleteMapping("/{id}")

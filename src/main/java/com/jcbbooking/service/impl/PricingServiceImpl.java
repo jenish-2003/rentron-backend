@@ -52,22 +52,30 @@ public class PricingServiceImpl implements PricingService {
         double surgeMultiplier = pricing.getSurgeMultiplier() != null ? pricing.getSurgeMultiplier() : 1.0;
         double taxPercentage = pricing.getTaxPercentage() != null ? pricing.getTaxPercentage() : 5.0;
 
-        String pType = product.getProductType() != null ? product.getProductType().toUpperCase() : "";
+        String pType = product.getProductType() != null ? product.getProductType().toUpperCase() : "RIDE";
+        boolean isHeavyEquipment = "HEAVY_EQUIPMENT".equals(pType) || "JCB".equals(pType) || "EXCAVATOR".equals(pType) || "CRANE".equals(pType);
 
-        if ("JCB".equals(pType) || "HEAVY_EQUIPMENT".equals(pType)) {
-            // Model A — JCB / Heavy Equipment Strategy
+        if (isHeavyEquipment) {
+            // Model A — Heavy Equipment (JCB/Excavator) Pricing Engine
+            result.put("pricingModel", "HEAVY_EQUIPMENT");
             baseAmount = pricing.getBasePrice() != null ? pricing.getBasePrice() : 0.0;
             
             int minHours = pricing.getMinimumHours() != null ? pricing.getMinimumHours() : 0;
             double effectiveHours = Math.max(hours, minHours);
             timeAmount = effectiveHours * (pricing.getPerHourPrice() != null ? pricing.getPerHourPrice() : 0.0);
             
+            if (hours > minHours && pricing.getExtraHourRate() != null && pricing.getExtraHourRate() > 0) {
+                double extraHours = hours - minHours;
+                timeAmount += extraHours * pricing.getExtraHourRate();
+            }
+
             distanceAmount = dist * (pricing.getPerKmPrice() != null ? pricing.getPerKmPrice() : 0.0);
             operatorAmount = pricing.getOperatorCharge() != null ? pricing.getOperatorCharge() : 0.0;
             driverAmount = pricing.getDriverCharge() != null ? pricing.getDriverCharge() : 0.0;
             waitingAmount = (waitMins / 60.0) * (pricing.getWaitingCharge() != null ? pricing.getWaitingCharge() : 0.0);
+            double discount = pricing.getDiscount() != null ? pricing.getDiscount() : 0.0;
 
-            double subtotal = baseAmount + timeAmount + distanceAmount + operatorAmount + driverAmount + waitingAmount;
+            double subtotal = Math.max(baseAmount + timeAmount + distanceAmount + operatorAmount + driverAmount + waitingAmount - discount, 0.0);
             double taxAmount = subtotal * (taxPercentage / 100.0);
             double totalAmount = subtotal + taxAmount;
 
@@ -79,11 +87,13 @@ public class PricingServiceImpl implements PricingService {
             result.put("waitingAmount", waitingAmount);
             result.put("bookingFee", 0.0);
             result.put("surgeMultiplier", 1.0);
+            result.put("discountAmount", discount);
             result.put("subtotal", subtotal);
             result.put("taxAmount", taxAmount);
             result.put("totalAmount", totalAmount);
         } else {
-            // Model B — Uber / Rapido Ride Strategy (BIKE, AUTO, CAR, etc.)
+            // Model B — Ride (Uber/Rapido) Pricing Engine
+            result.put("pricingModel", "RIDE");
             baseAmount = pricing.getBasePrice() != null ? pricing.getBasePrice() : 0.0;
             distanceAmount = dist * (pricing.getPerKmPrice() != null ? pricing.getPerKmPrice() : 0.0);
             
@@ -91,8 +101,9 @@ public class PricingServiceImpl implements PricingService {
             timeAmount = durationMins * (pricing.getPerMinutePrice() != null ? pricing.getPerMinutePrice() : 0.0);
             bookingFee = pricing.getBookingFee() != null ? pricing.getBookingFee() : 0.0;
             waitingAmount = waitMins * ((pricing.getWaitingCharge() != null ? pricing.getWaitingCharge() : 0.0) / 60.0);
+            double discount = pricing.getDiscount() != null ? pricing.getDiscount() : 0.0;
 
-            double rawSubtotal = (baseAmount + distanceAmount + timeAmount + bookingFee + waitingAmount) * surgeMultiplier;
+            double rawSubtotal = (baseAmount + distanceAmount + timeAmount + bookingFee + waitingAmount) * surgeMultiplier - discount;
             double minFare = pricing.getMinimumFare() != null ? pricing.getMinimumFare() : 0.0;
             double subtotal = Math.max(rawSubtotal, minFare);
             double taxAmount = subtotal * (taxPercentage / 100.0);
@@ -104,6 +115,7 @@ public class PricingServiceImpl implements PricingService {
             result.put("bookingFee", bookingFee);
             result.put("waitingAmount", waitingAmount);
             result.put("surgeMultiplier", surgeMultiplier);
+            result.put("discountAmount", discount);
             result.put("operatorAmount", 0.0);
             result.put("driverAmount", 0.0);
             result.put("subtotal", subtotal);
@@ -123,27 +135,37 @@ public class PricingServiceImpl implements PricingService {
 
     @Override
     public Pricing saveOrUpdatePricing(Pricing pricing) {
+        Pricing existing = null;
         if (pricing.getId() != null) {
-            Pricing existing = pricingRepository.findById(pricing.getId()).orElse(null);
-            if (existing != null) {
-                existing.setBasePrice(pricing.getBasePrice());
-                existing.setPerKmPrice(pricing.getPerKmPrice());
-                existing.setPerMinutePrice(pricing.getPerMinutePrice());
-                existing.setPerHourPrice(pricing.getPerHourPrice());
-                existing.setMinimumFare(pricing.getMinimumFare());
-                existing.setMinimumHours(pricing.getMinimumHours());
-                existing.setWaitingCharge(pricing.getWaitingCharge());
-                existing.setDriverCharge(pricing.getDriverCharge());
-                existing.setOperatorCharge(pricing.getOperatorCharge());
-                existing.setBookingFee(pricing.getBookingFee());
-                existing.setCancellationFee(pricing.getCancellationFee());
-                existing.setSurgeMultiplier(pricing.getSurgeMultiplier());
-                existing.setTaxPercentage(pricing.getTaxPercentage());
-                if (pricing.getActive() != null) {
-                    existing.setActive(pricing.getActive());
-                }
-                return pricingRepository.save(existing);
+            existing = pricingRepository.findById(pricing.getId()).orElse(null);
+        }
+        if (existing == null && pricing.getProductId() != null) {
+            existing = pricingRepository.findByProductId(pricing.getProductId()).orElse(null);
+        }
+
+        if (existing != null) {
+            existing.setPricingModel(pricing.getPricingModel());
+            existing.setChargingMethod(pricing.getChargingMethod());
+            existing.setBasePrice(pricing.getBasePrice() != null ? pricing.getBasePrice() : 0.0);
+            existing.setPerKmPrice(pricing.getPerKmPrice() != null ? pricing.getPerKmPrice() : 0.0);
+            existing.setPerMinutePrice(pricing.getPerMinutePrice() != null ? pricing.getPerMinutePrice() : 0.0);
+            existing.setPerHourPrice(pricing.getPerHourPrice() != null ? pricing.getPerHourPrice() : 0.0);
+            existing.setDailyRate(pricing.getDailyRate() != null ? pricing.getDailyRate() : 0.0);
+            existing.setExtraHourRate(pricing.getExtraHourRate() != null ? pricing.getExtraHourRate() : 0.0);
+            existing.setDiscount(pricing.getDiscount() != null ? pricing.getDiscount() : 0.0);
+            existing.setMinimumFare(pricing.getMinimumFare() != null ? pricing.getMinimumFare() : 0.0);
+            existing.setMinimumHours(pricing.getMinimumHours() != null ? pricing.getMinimumHours() : 0);
+            existing.setWaitingCharge(pricing.getWaitingCharge() != null ? pricing.getWaitingCharge() : 0.0);
+            existing.setDriverCharge(pricing.getDriverCharge() != null ? pricing.getDriverCharge() : 0.0);
+            existing.setOperatorCharge(pricing.getOperatorCharge() != null ? pricing.getOperatorCharge() : 0.0);
+            existing.setBookingFee(pricing.getBookingFee() != null ? pricing.getBookingFee() : 0.0);
+            existing.setCancellationFee(pricing.getCancellationFee() != null ? pricing.getCancellationFee() : 0.0);
+            existing.setSurgeMultiplier(pricing.getSurgeMultiplier() != null ? pricing.getSurgeMultiplier() : 1.0);
+            existing.setTaxPercentage(pricing.getTaxPercentage() != null ? pricing.getTaxPercentage() : 5.0);
+            if (pricing.getActive() != null) {
+                existing.setActive(pricing.getActive());
             }
+            return pricingRepository.save(existing);
         }
         return pricingRepository.save(pricing);
     }
