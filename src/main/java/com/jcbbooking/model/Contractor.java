@@ -49,4 +49,7 @@ public class Contractor {
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false, columnDefinition = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
     private LocalDateTime createdAt;
+
+    @Transient
+    private java.util.List<Driver> assignedDrivers;
 }

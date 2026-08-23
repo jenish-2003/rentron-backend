@@ -1,27 +1,34 @@
 package com.jcbbooking.controller;
 
-import com.jcbbooking.model.Driver;
-import com.jcbbooking.model.Role;
-import com.jcbbooking.model.User;
-import com.jcbbooking.repository.DocumentRepository;
-import com.jcbbooking.repository.DriverRepository;
-import com.jcbbooking.repository.UserRepository;
-import com.jcbbooking.util.ApiResponse;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.ResponseEntity;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.bind.annotation.*;
-import org.springframework.beans.factory.annotation.Value;
-
 import java.io.File;
 import java.util.List;
 import java.util.Optional;
 
-import com.jcbbooking.repository.ContractorRepository;
-import com.jcbbooking.security.CustomUserDetails;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.jcbbooking.model.Driver;
+import com.jcbbooking.model.Role;
+import com.jcbbooking.model.User;
+import com.jcbbooking.repository.ContractorRepository;
+import com.jcbbooking.repository.DocumentRepository;
+import com.jcbbooking.repository.DriverRepository;
+import com.jcbbooking.repository.UserRepository;
+import com.jcbbooking.security.CustomUserDetails;
+import com.jcbbooking.util.ApiResponse;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @RestController
 @RequestMapping("/api/v1/drivers")
@@ -34,22 +41,70 @@ public class DriverController {
     private final PasswordEncoder passwordEncoder;
     private final ContractorRepository contractorRepository;
     private final DocumentRepository documentRepository;
+    private final com.jcbbooking.repository.PartnerApprovalRepository partnerApprovalRepository;
 
     @Value("${core.fileTransfer.primaryUploadFolder:/opt/microservice/upload/images}")
     private String primaryUploadFolder;
 
     @GetMapping
-    public ResponseEntity<ApiResponse<List<Driver>>> getAllDrivers() {
+    public ResponseEntity<ApiResponse<List<Driver>>> getAllDrivers(@AuthenticationPrincipal CustomUserDetails userDetails) {
         log.info("REST request to get all drivers");
+        if (userDetails != null) {
+            Role role = userDetails.getUser().getRole();
+            if (role == Role.CONTRACTOR) {
+                Optional<com.jcbbooking.model.Contractor> conOpt = contractorRepository.findByUserId(userDetails.getId());
+                if (conOpt.isEmpty()) {
+                    conOpt = contractorRepository.findByPhone(userDetails.getUser().getPhone());
+                }
+                if (conOpt.isPresent()) {
+                    List<Driver> contractorDrivers = driverRepository.findAllByContractorId(conOpt.get().getId());
+                    return ResponseEntity.ok(ApiResponse.success("Drivers retrieved successfully", contractorDrivers));
+                }
+                return ResponseEntity.ok(ApiResponse.success("No assigned drivers found", List.of()));
+            } else if (role == Role.DRIVER) {
+                Optional<Driver> selfOpt = driverRepository.findByUserId(userDetails.getId());
+                if (selfOpt.isEmpty()) {
+                    selfOpt = driverRepository.findByPhone(userDetails.getUser().getPhone());
+                }
+                return selfOpt.map(driver -> ResponseEntity.ok(ApiResponse.success("Driver retrieved successfully", List.of(driver))))
+                        .orElseGet(() -> ResponseEntity.ok(ApiResponse.success("Driver not found", List.of())));
+            }
+        }
         return ResponseEntity.ok(ApiResponse.success("Drivers retrieved successfully", driverRepository.findAll()));
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<ApiResponse<Driver>> getDriverById(@PathVariable Long id) {
+    public ResponseEntity<ApiResponse<Driver>> getDriverById(
+            @PathVariable Long id,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
         log.info("REST request to get driver by id: {}", id);
-        return driverRepository.findById(id)
-                .map(driver -> ResponseEntity.ok(ApiResponse.success("Driver retrieved successfully", driver)))
-                .orElse(ResponseEntity.notFound().build());
+        Driver driver = driverRepository.findById(id).orElse(null);
+        if (driver == null) {
+            return ResponseEntity.notFound().build();
+        }
+
+        if (userDetails != null) {
+            Role role = userDetails.getUser().getRole();
+            if (role == Role.CONTRACTOR) {
+                Optional<com.jcbbooking.model.Contractor> conOpt = contractorRepository.findByUserId(userDetails.getId());
+                if (conOpt.isEmpty()) {
+                    conOpt = contractorRepository.findByPhone(userDetails.getUser().getPhone());
+                }
+                if (conOpt.isEmpty() || !conOpt.get().getId().equals(driver.getContractorId())) {
+                    return ResponseEntity.status(403).body(ApiResponse.error("Unauthorized access to driver details"));
+                }
+            } else if (role == Role.DRIVER) {
+                Optional<Driver> selfOpt = driverRepository.findByUserId(userDetails.getId());
+                if (selfOpt.isEmpty()) {
+                    selfOpt = driverRepository.findByPhone(userDetails.getUser().getPhone());
+                }
+                if (selfOpt.isEmpty() || !selfOpt.get().getId().equals(driver.getId())) {
+                    return ResponseEntity.status(403).body(ApiResponse.error("Unauthorized access to driver details"));
+                }
+            }
+        }
+
+        return ResponseEntity.ok(ApiResponse.success("Driver retrieved successfully", driver));
     }
 
     @PostMapping
@@ -93,42 +148,12 @@ public class DriverController {
 
             // Sync User creation if status is set to ACTIVE
             if ("ACTIVE".equals(driver.getStatus()) && !"ACTIVE".equals(existing.getStatus())) {
-                User user = userRepository.findByPhone(existing.getPhone()).orElse(null);
-                if (user == null) {
-                    user = User.builder()
-                            .fullName(existing.getFullName())
-                            .phone(existing.getPhone())
-                            .email(existing.getEmail())
-                            .role(Role.DRIVER)
-                            .driverId(existing.getId())
-                            .active(true)
-                            .verified(true)
-                            .passwordHash(passwordEncoder.encode("Password123"))
-                            .build();
-                    user = userRepository.save(user);
-                } else {
-                    user.setActive(true);
-                    user.setRole(Role.DRIVER);
-                    user.setDriverId(existing.getId());
-                    user = userRepository.save(user);
-                }
-                existing.setUserId(user.getId());
+                syncUserAccount(existing.getPhone(), existing.getFullName(), existing.getEmail(), Role.DRIVER, existing.getContractorId(), existing.getId(), true);
             }
 
             // Sync User deactivation if status is set to SUSPENDED
             if ("SUSPENDED".equals(driver.getStatus()) && !"SUSPENDED".equals(existing.getStatus())) {
-                if (existing.getUserId() != null) {
-                    userRepository.findById(existing.getUserId()).ifPresent(user -> {
-                        user.setActive(false);
-                        userRepository.save(user);
-                    });
-                } else {
-                    userRepository.findByPhone(existing.getPhone()).ifPresent(user -> {
-                        user.setActive(false);
-                        userRepository.save(user);
-                        existing.setUserId(user.getId());
-                    });
-                }
+                syncUserAccount(existing.getPhone(), existing.getFullName(), existing.getEmail(), Role.DRIVER, existing.getContractorId(), existing.getId(), false);
             }
 
             // Update fields
@@ -143,12 +168,64 @@ public class DriverController {
             }
             if (driver.getStatus() != null) {
                 existing.setStatus(driver.getStatus());
+                syncPartnerApprovalStatus(existing.getPhone(), driver.getStatus());
             }
             driver = existing;
         }
 
         Driver saved = driverRepository.save(driver);
         return ResponseEntity.ok(ApiResponse.success(isNew ? "Driver application submitted" : "Driver updated successfully", saved));
+    }
+
+    private User syncUserAccount(String phone, String fullName, String email, Role role, Long contractorId, Long driverId, boolean active) {
+        if (phone == null || phone.trim().isEmpty()) {
+            return null;
+        }
+        String customPass = partnerApprovalRepository.findByPhone(phone)
+                .map(com.jcbbooking.model.PartnerApproval::getPassword)
+                .filter(p -> p != null && !p.trim().isEmpty())
+                .orElse("Password123");
+
+        User user = userRepository.findByPhone(phone).orElse(null);
+        if (user == null) {
+            user = User.builder()
+                    .fullName(fullName != null ? fullName : "Driver Partner")
+                    .phone(phone)
+                    .email(email)
+                    .role(role)
+                    .contractorId(contractorId)
+                    .driverId(driverId)
+                    .active(active)
+                    .verified(true)
+                    .passwordHash(passwordEncoder.encode(customPass))
+                    .build();
+            user = userRepository.save(user);
+            log.info("Created missing User entry ID {} for driver phone {}, active={}", user.getId(), phone, active);
+        } else {
+            user.setActive(active);
+            user.setVerified(true);
+            if (!"Password123".equals(customPass)) {
+                user.setPasswordHash(passwordEncoder.encode(customPass));
+            }
+            if (role != null) user.setRole(role);
+            if (contractorId != null) user.setContractorId(contractorId);
+            if (driverId != null) user.setDriverId(driverId);
+            if (fullName != null && !fullName.trim().isEmpty()) user.setFullName(fullName);
+            if (email != null && !email.trim().isEmpty()) user.setEmail(email);
+            user = userRepository.save(user);
+            log.info("Updated existing User entry ID {} for driver phone {}, active={}", user.getId(), phone, active);
+        }
+        return user;
+    }
+
+    private void syncPartnerApprovalStatus(String phone, String status) {
+        if (phone != null && !phone.trim().isEmpty()) {
+            partnerApprovalRepository.findByPhone(phone).ifPresent(pa -> {
+                pa.setStatus(status);
+                partnerApprovalRepository.save(pa);
+                log.info("Synced PartnerApproval status to {} for driver phone {}", status, phone);
+            });
+        }
     }
 
     @PostMapping("/{id}/approve")
@@ -160,29 +237,12 @@ public class DriverController {
             return ResponseEntity.notFound().build();
         }
 
-        // Find or create User
-        User user = userRepository.findByPhone(driver.getPhone()).orElse(null);
-        if (user == null) {
-            user = User.builder()
-                    .fullName(driver.getFullName())
-                    .phone(driver.getPhone())
-                    .email(driver.getEmail())
-                    .role(Role.DRIVER)
-                    .driverId(driver.getId())
-                    .active(true)
-                    .verified(true)
-                    .passwordHash(passwordEncoder.encode("Password123"))
-                    .build();
-            user = userRepository.save(user);
-        } else {
-            user.setActive(true);
-            user.setRole(Role.DRIVER);
-            user.setDriverId(driver.getId());
-            user = userRepository.save(user);
+        User user = syncUserAccount(driver.getPhone(), driver.getFullName(), driver.getEmail(), Role.DRIVER, driver.getContractorId(), driver.getId(), true);
+        if (user != null) {
+            driver.setUserId(user.getId());
         }
-
-        driver.setUserId(user.getId());
         driver.setStatus("ACTIVE");
+        syncPartnerApprovalStatus(driver.getPhone(), "ACTIVE");
         Driver saved = driverRepository.save(driver);
 
         return ResponseEntity.ok(ApiResponse.success("Driver approved successfully and user account activated", saved));
@@ -198,6 +258,7 @@ public class DriverController {
         }
 
         driver.setStatus("REJECTED");
+        syncPartnerApprovalStatus(driver.getPhone(), "REJECTED");
         Driver saved = driverRepository.save(driver);
         return ResponseEntity.ok(ApiResponse.success("Driver application rejected", saved));
     }
@@ -212,17 +273,10 @@ public class DriverController {
         }
 
         driver.setStatus("SUSPENDED");
-        if (driver.getUserId() != null) {
-            userRepository.findById(driver.getUserId()).ifPresent(user -> {
-                user.setActive(false);
-                userRepository.save(user);
-            });
-        } else {
-            userRepository.findByPhone(driver.getPhone()).ifPresent(user -> {
-                user.setActive(false);
-                userRepository.save(user);
-                driver.setUserId(user.getId());
-            });
+        syncPartnerApprovalStatus(driver.getPhone(), "SUSPENDED");
+        User user = syncUserAccount(driver.getPhone(), driver.getFullName(), driver.getEmail(), Role.DRIVER, driver.getContractorId(), driver.getId(), false);
+        if (user != null) {
+            driver.setUserId(user.getId());
         }
         Driver saved = driverRepository.save(driver);
         return ResponseEntity.ok(ApiResponse.success("Driver suspended successfully and user account deactivated", saved));
@@ -238,17 +292,10 @@ public class DriverController {
         }
 
         driver.setStatus("ACTIVE");
-        if (driver.getUserId() != null) {
-            userRepository.findById(driver.getUserId()).ifPresent(user -> {
-                user.setActive(true);
-                userRepository.save(user);
-            });
-        } else {
-            userRepository.findByPhone(driver.getPhone()).ifPresent(user -> {
-                user.setActive(true);
-                userRepository.save(user);
-                driver.setUserId(user.getId());
-            });
+        syncPartnerApprovalStatus(driver.getPhone(), "ACTIVE");
+        User user = syncUserAccount(driver.getPhone(), driver.getFullName(), driver.getEmail(), Role.DRIVER, driver.getContractorId(), driver.getId(), true);
+        if (user != null) {
+            driver.setUserId(user.getId());
         }
         Driver saved = driverRepository.save(driver);
         return ResponseEntity.ok(ApiResponse.success("Driver activated successfully and user account activated", saved));

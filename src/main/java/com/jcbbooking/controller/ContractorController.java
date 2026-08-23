@@ -1,22 +1,33 @@
 package com.jcbbooking.controller;
 
+import java.io.File;
+import java.util.List;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
 import com.jcbbooking.model.Contractor;
 import com.jcbbooking.model.Role;
 import com.jcbbooking.model.User;
 import com.jcbbooking.repository.ContractorRepository;
 import com.jcbbooking.repository.DocumentRepository;
+import com.jcbbooking.repository.DriverRepository;
 import com.jcbbooking.repository.UserRepository;
+import com.jcbbooking.security.CustomUserDetails;
 import com.jcbbooking.util.ApiResponse;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.ResponseEntity;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.bind.annotation.*;
-
-import java.io.File;
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/contractors")
@@ -32,17 +43,47 @@ public class ContractorController {
     @Value("${core.fileTransfer.primaryUploadFolder:/opt/microservice/upload/images}")
     private String primaryUploadFolder;
 
+    private final DriverRepository driverRepository;
+    private final com.jcbbooking.repository.PartnerApprovalRepository partnerApprovalRepository;
+
     @GetMapping
-    public ResponseEntity<ApiResponse<List<Contractor>>> getAllContractors() {
+    public ResponseEntity<ApiResponse<List<Contractor>>> getAllContractors(@AuthenticationPrincipal CustomUserDetails userDetails) {
         log.info("REST request to get all contractors");
-        return ResponseEntity.ok(ApiResponse.success("Contractors retrieved successfully", contractorRepository.findAll()));
+        if (userDetails != null && userDetails.getUser().getRole() == Role.CONTRACTOR) {
+            Contractor contractor = contractorRepository.findByUserId(userDetails.getId())
+                    .orElseGet(() -> contractorRepository.findByPhone(userDetails.getUser().getPhone()).orElse(null));
+            if (contractor != null) {
+                contractor.setAssignedDrivers(driverRepository.findAllByContractorId(contractor.getId()));
+                return ResponseEntity.ok(ApiResponse.success("Contractor retrieved successfully", List.of(contractor)));
+            }
+            return ResponseEntity.ok(ApiResponse.success("No contractor found", List.of()));
+        }
+
+        List<Contractor> list = contractorRepository.findAll();
+        list.forEach(c -> c.setAssignedDrivers(driverRepository.findAllByContractorId(c.getId())));
+        return ResponseEntity.ok(ApiResponse.success("Contractors retrieved successfully", list));
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<ApiResponse<Contractor>> getContractorById(@PathVariable Long id) {
+    public ResponseEntity<ApiResponse<Contractor>> getContractorById(
+            @PathVariable Long id,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
         log.info("REST request to get contractor by id: {}", id);
+        if (userDetails != null && userDetails.getUser().getRole() == Role.CONTRACTOR) {
+            Contractor contractor = contractorRepository.findByUserId(userDetails.getId())
+                    .orElseGet(() -> contractorRepository.findByPhone(userDetails.getUser().getPhone()).orElse(null));
+            if (contractor == null || !contractor.getId().equals(id)) {
+                return ResponseEntity.status(403).body(ApiResponse.error("Unauthorized access to contractor details"));
+            }
+            contractor.setAssignedDrivers(driverRepository.findAllByContractorId(contractor.getId()));
+            return ResponseEntity.ok(ApiResponse.success("Contractor retrieved successfully", contractor));
+        }
+
         return contractorRepository.findById(id)
-                .map(contractor -> ResponseEntity.ok(ApiResponse.success("Contractor retrieved successfully", contractor)))
+                .map(contractor -> {
+                    contractor.setAssignedDrivers(driverRepository.findAllByContractorId(contractor.getId()));
+                    return ResponseEntity.ok(ApiResponse.success("Contractor retrieved successfully", contractor));
+                })
                 .orElse(ResponseEntity.notFound().build());
     }
 
@@ -118,12 +159,64 @@ public class ContractorController {
             existing.setExperience(contractor.getExperience());
             if (contractor.getStatus() != null) {
                 existing.setStatus(contractor.getStatus());
+                syncPartnerApprovalStatus(existing.getPhone(), contractor.getStatus());
             }
             contractor = existing;
         }
 
         Contractor saved = contractorRepository.save(contractor);
         return ResponseEntity.ok(ApiResponse.success(isNew ? "Contractor application submitted" : "Contractor updated successfully", saved));
+    }
+
+    private User syncUserAccount(String phone, String fullName, String email, Role role, Long contractorId, Long driverId, boolean active) {
+        if (phone == null || phone.trim().isEmpty()) {
+            return null;
+        }
+        String customPass = partnerApprovalRepository.findByPhone(phone)
+                .map(com.jcbbooking.model.PartnerApproval::getPassword)
+                .filter(p -> p != null && !p.trim().isEmpty())
+                .orElse("Password123");
+
+        User user = userRepository.findByPhone(phone).orElse(null);
+        if (user == null) {
+            user = User.builder()
+                    .fullName(fullName != null ? fullName : "Contractor Partner")
+                    .phone(phone)
+                    .email(email)
+                    .role(role)
+                    .contractorId(contractorId)
+                    .driverId(driverId)
+                    .active(active)
+                    .verified(true)
+                    .passwordHash(passwordEncoder.encode(customPass))
+                    .build();
+            user = userRepository.save(user);
+            log.info("Created missing User entry ID {} for phone {}, active={}", user.getId(), phone, active);
+        } else {
+            user.setActive(active);
+            user.setVerified(true);
+            if (!"Password123".equals(customPass)) {
+                user.setPasswordHash(passwordEncoder.encode(customPass));
+            }
+            if (role != null) user.setRole(role);
+            if (contractorId != null) user.setContractorId(contractorId);
+            if (driverId != null) user.setDriverId(driverId);
+            if (fullName != null && !fullName.trim().isEmpty()) user.setFullName(fullName);
+            if (email != null && !email.trim().isEmpty()) user.setEmail(email);
+            user = userRepository.save(user);
+            log.info("Updated existing User entry ID {} for phone {}, active={}", user.getId(), phone, active);
+        }
+        return user;
+    }
+
+    private void syncPartnerApprovalStatus(String phone, String status) {
+        if (phone != null && !phone.trim().isEmpty()) {
+            partnerApprovalRepository.findByPhone(phone).ifPresent(pa -> {
+                pa.setStatus(status);
+                partnerApprovalRepository.save(pa);
+                log.info("Synced PartnerApproval status to {} for phone {}", status, phone);
+            });
+        }
     }
 
     @PostMapping("/{id}/approve")
@@ -135,29 +228,12 @@ public class ContractorController {
             return ResponseEntity.notFound().build();
         }
 
-        // Find or create User
-        User user = userRepository.findByPhone(contractor.getPhone()).orElse(null);
-        if (user == null) {
-            user = User.builder()
-                    .fullName(contractor.getFullName())
-                    .phone(contractor.getPhone())
-                    .email(contractor.getEmail())
-                    .role(Role.CONTRACTOR)
-                    .contractorId(contractor.getId())
-                    .active(true)
-                    .verified(true)
-                    .passwordHash(passwordEncoder.encode("Password123"))
-                    .build();
-            user = userRepository.save(user);
-        } else {
-            user.setActive(true);
-            user.setRole(Role.CONTRACTOR);
-            user.setContractorId(contractor.getId());
-            user = userRepository.save(user);
+        User user = syncUserAccount(contractor.getPhone(), contractor.getFullName(), contractor.getEmail(), Role.CONTRACTOR, contractor.getId(), null, true);
+        if (user != null) {
+            contractor.setUserId(user.getId());
         }
-
-        contractor.setUserId(user.getId());
         contractor.setStatus("ACTIVE");
+        syncPartnerApprovalStatus(contractor.getPhone(), "ACTIVE");
         Contractor saved = contractorRepository.save(contractor);
 
         return ResponseEntity.ok(ApiResponse.success("Contractor approved successfully and user account activated", saved));
@@ -173,6 +249,7 @@ public class ContractorController {
         }
 
         contractor.setStatus("REJECTED");
+        syncPartnerApprovalStatus(contractor.getPhone(), "REJECTED");
         Contractor saved = contractorRepository.save(contractor);
         return ResponseEntity.ok(ApiResponse.success("Contractor application rejected", saved));
     }
@@ -187,17 +264,10 @@ public class ContractorController {
         }
 
         contractor.setStatus("SUSPENDED");
-        if (contractor.getUserId() != null) {
-            userRepository.findById(contractor.getUserId()).ifPresent(user -> {
-                user.setActive(false);
-                userRepository.save(user);
-            });
-        } else {
-            userRepository.findByPhone(contractor.getPhone()).ifPresent(user -> {
-                user.setActive(false);
-                userRepository.save(user);
-                contractor.setUserId(user.getId());
-            });
+        syncPartnerApprovalStatus(contractor.getPhone(), "SUSPENDED");
+        User user = syncUserAccount(contractor.getPhone(), contractor.getFullName(), contractor.getEmail(), Role.CONTRACTOR, contractor.getId(), null, false);
+        if (user != null) {
+            contractor.setUserId(user.getId());
         }
         Contractor saved = contractorRepository.save(contractor);
         return ResponseEntity.ok(ApiResponse.success("Contractor suspended successfully and user account deactivated", saved));
@@ -213,17 +283,10 @@ public class ContractorController {
         }
 
         contractor.setStatus("ACTIVE");
-        if (contractor.getUserId() != null) {
-            userRepository.findById(contractor.getUserId()).ifPresent(user -> {
-                user.setActive(true);
-                userRepository.save(user);
-            });
-        } else {
-            userRepository.findByPhone(contractor.getPhone()).ifPresent(user -> {
-                user.setActive(true);
-                userRepository.save(user);
-                contractor.setUserId(user.getId());
-            });
+        syncPartnerApprovalStatus(contractor.getPhone(), "ACTIVE");
+        User user = syncUserAccount(contractor.getPhone(), contractor.getFullName(), contractor.getEmail(), Role.CONTRACTOR, contractor.getId(), null, true);
+        if (user != null) {
+            contractor.setUserId(user.getId());
         }
         Contractor saved = contractorRepository.save(contractor);
         return ResponseEntity.ok(ApiResponse.success("Contractor activated successfully and user account activated", saved));
