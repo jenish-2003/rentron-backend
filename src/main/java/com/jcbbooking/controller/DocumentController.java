@@ -1,7 +1,9 @@
 package com.jcbbooking.controller;
 
 import com.jcbbooking.model.Document;
+import com.jcbbooking.repository.ContractorRepository;
 import com.jcbbooking.repository.DocumentRepository;
+import com.jcbbooking.repository.DriverRepository;
 import com.jcbbooking.util.ApiResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -169,13 +171,58 @@ public class DocumentController {
         return ResponseEntity.ok(ApiResponse.success("Document deleted successfully"));
     }
 
+    private final ContractorRepository contractorRepository;
+    private final DriverRepository driverRepository;
+    private final com.jcbbooking.repository.PartnerApprovalRepository partnerApprovalRepository;
+
     @GetMapping("/entity/{entityType}/{entityId}")
     public ResponseEntity<ApiResponse<List<Document>>> getDocumentsForEntity(
             @PathVariable String entityType,
             @PathVariable Long entityId) {
         log.info("REST request to fetch documents for entity: {} (ID: {})", entityType, entityId);
-        List<Document> docs = documentRepository.findAllByEntityTypeAndEntityId(entityType.toUpperCase(), entityId);
-        return ResponseEntity.ok(ApiResponse.success("Documents retrieved successfully", docs));
+        
+        java.util.Set<Long> targetIds = new java.util.HashSet<>();
+        targetIds.add(entityId);
+
+        if ("CONTRACTOR".equalsIgnoreCase(entityType)) {
+            contractorRepository.findById(entityId).ifPresent(c -> {
+                if (c.getPhone() != null) {
+                    partnerApprovalRepository.findByPhone(c.getPhone()).ifPresent(pa -> targetIds.add(pa.getId()));
+                }
+            });
+            partnerApprovalRepository.findById(entityId).ifPresent(pa -> {
+                targetIds.add(pa.getId());
+                if (pa.getPhone() != null) {
+                    contractorRepository.findByPhone(pa.getPhone()).ifPresent(c -> targetIds.add(c.getId()));
+                }
+            });
+        } else if ("DRIVER".equalsIgnoreCase(entityType)) {
+            driverRepository.findById(entityId).ifPresent(d -> {
+                if (d.getPhone() != null) {
+                    partnerApprovalRepository.findByPhone(d.getPhone()).ifPresent(pa -> targetIds.add(pa.getId()));
+                }
+            });
+            partnerApprovalRepository.findById(entityId).ifPresent(pa -> {
+                targetIds.add(pa.getId());
+                if (pa.getPhone() != null) {
+                    driverRepository.findByPhone(pa.getPhone()).ifPresent(d -> targetIds.add(d.getId()));
+                }
+            });
+        }
+
+        List<Document> allDocs = new java.util.ArrayList<>();
+        java.util.Set<Long> seenDocIds = new java.util.HashSet<>();
+
+        for (Long id : targetIds) {
+            List<Document> docs = documentRepository.findAllByEntityTypeAndEntityId(entityType.toUpperCase(), id);
+            for (Document doc : docs) {
+                if (seenDocIds.add(doc.getId())) {
+                    allDocs.add(doc);
+                }
+            }
+        }
+
+        return ResponseEntity.ok(ApiResponse.success("Documents retrieved successfully", allDocs));
     }
 
     @GetMapping("/download/{id}")
