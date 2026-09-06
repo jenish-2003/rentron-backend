@@ -37,10 +37,7 @@ public class BookingAssignmentService {
                 .orElseGet(() -> {
                     BookingSetting def = BookingSetting.builder()
                             .settingKey("DEFAULT_SETTINGS")
-                            .gateway("RAZORPAY")
-                            .paymentEnabled(true)
                             .currency("INR")
-                            .environment("TEST")
                             .assignmentType("AUTO")
                             .initialRadiusKm(5.0)
                             .radiusIncrementKm(5.0)

@@ -33,13 +33,9 @@ public class BookingSettingController {
         BookingSetting safeCopy = BookingSetting.builder()
                 .id(settings.getId())
                 .settingKey(settings.getSettingKey())
-                .gateway(settings.getGateway())
-                .paymentEnabled(settings.getPaymentEnabled())
                 .keyId(settings.getKeyId())
                 .keySecret(settings.getKeySecret() != null ? "******" : null)
-                .webhookSecret(settings.getWebhookSecret() != null ? "******" : null)
                 .currency(settings.getCurrency())
-                .environment(settings.getEnvironment())
                 .assignmentType(settings.getAssignmentType())
                 .initialRadiusKm(settings.getInitialRadiusKm())
                 .radiusIncrementKm(settings.getRadiusIncrementKm())
@@ -47,6 +43,7 @@ public class BookingSettingController {
                 .assignmentTimeoutSeconds(settings.getAssignmentTimeoutSeconds())
                 .maxLocationAgeSeconds(settings.getMaxLocationAgeSeconds())
                 .notifyAdminWhenUnassigned(settings.getNotifyAdminWhenUnassigned())
+                .mapKey(settings.getMapKey())
                 .createdAt(settings.getCreatedAt())
                 .updatedAt(settings.getUpdatedAt())
                 .build();
@@ -60,20 +57,14 @@ public class BookingSettingController {
         log.info("REST request to update booking settings");
         BookingSetting existing = bookingAssignmentService.getOrInitSettings();
 
-        if (request.getGateway() != null) existing.setGateway(request.getGateway());
-        if (request.getPaymentEnabled() != null) existing.setPaymentEnabled(request.getPaymentEnabled());
         if (request.getKeyId() != null) existing.setKeyId(request.getKeyId());
         
         // Only update secrets if non-empty and not masked
         if (request.getKeySecret() != null && !request.getKeySecret().isEmpty() && !"******".equals(request.getKeySecret())) {
             existing.setKeySecret(request.getKeySecret());
         }
-        if (request.getWebhookSecret() != null && !request.getWebhookSecret().isEmpty() && !"******".equals(request.getWebhookSecret())) {
-            existing.setWebhookSecret(request.getWebhookSecret());
-        }
 
         if (request.getCurrency() != null) existing.setCurrency(request.getCurrency());
-        if (request.getEnvironment() != null) existing.setEnvironment(request.getEnvironment());
         if (request.getAssignmentType() != null) existing.setAssignmentType(request.getAssignmentType());
         if (request.getInitialRadiusKm() != null) existing.setInitialRadiusKm(request.getInitialRadiusKm());
         if (request.getRadiusIncrementKm() != null) existing.setRadiusIncrementKm(request.getRadiusIncrementKm());
@@ -81,6 +72,7 @@ public class BookingSettingController {
         if (request.getAssignmentTimeoutSeconds() != null) existing.setAssignmentTimeoutSeconds(request.getAssignmentTimeoutSeconds());
         if (request.getMaxLocationAgeSeconds() != null) existing.setMaxLocationAgeSeconds(request.getMaxLocationAgeSeconds());
         if (request.getNotifyAdminWhenUnassigned() != null) existing.setNotifyAdminWhenUnassigned(request.getNotifyAdminWhenUnassigned());
+        if (request.getMapKey() != null) existing.setMapKey(request.getMapKey());
 
         BookingSetting saved = bookingSettingRepository.save(existing);
         return ResponseEntity.ok(ApiResponse.success("Booking settings updated successfully", saved));

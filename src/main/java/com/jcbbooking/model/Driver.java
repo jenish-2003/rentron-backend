@@ -69,7 +69,45 @@ public class Driver {
     @Column(name = "location_updated_at")
     private LocalDateTime locationUpdatedAt;
 
+    @Column(name = "operation_type", length = 50)
+    private String operationType; // OWN, RENT_OR_LEASE, FLEET
+
+    @Column(name = "selected_vehicle_type", length = 50)
+    private String selectedVehicleType; // CAR, AUTO, BIKE, MACHINERY
+
+    @Column(name = "selected_machinery_model", length = 100)
+    private String selectedMachineryModel;
+
+    @Column(name = "city", length = 100)
+    private String city;
+
+    @Column(name = "dob", length = 30)
+    private String dob;
+
+    @Column(name = "gender", length = 20)
+    private String gender;
+
+    @Column(name = "address", length = 255)
+    private String address;
+
+    @Column(name = "profile_photo_url", length = 500)
+    private String profilePhotoUrl;
+
+    @Column(name = "preferred_language", length = 50)
+    private String preferredLanguage;
+
+    @Column(name = "referral_code", length = 50)
+    private String referralCode;
+
+    @Column(name = "terms_accepted_at")
+    private LocalDateTime termsAcceptedAt;
+
+    @Builder.Default
+    @Column(name = "is_online", nullable = false)
+    private Boolean isOnline = false;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false, columnDefinition = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
     private LocalDateTime createdAt;
 }
+

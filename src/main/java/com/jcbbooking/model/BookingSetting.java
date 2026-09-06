@@ -15,73 +15,61 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 public class BookingSetting {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+	@Id
+	@GeneratedValue(strategy = GenerationType.IDENTITY)
+	private Long id;
 
-    @Column(name = "setting_key", unique = true, nullable = false, length = 50)
-    private String settingKey; // e.g. DEFAULT_SETTINGS
+	@Column(name = "setting_key", unique = true, nullable = false, length = 50)
+	private String settingKey; // e.g. DEFAULT_SETTINGS
 
-    // --- Payment Configuration ---
-    @Builder.Default
-    @Column(name = "gateway", length = 50)
-    private String gateway = "RAZORPAY";
+	// --- Payment Configuration ---
+	@Column(name = "key_id", length = 150)
+	private String keyId;
 
-    @Builder.Default
-    @Column(name = "payment_enabled", nullable = false)
-    private Boolean paymentEnabled = true;
+	@Column(name = "key_secret", length = 150)
+	private String keySecret;
 
-    @Column(name = "key_id", length = 150)
-    private String keyId;
+	@Builder.Default
+	@Column(name = "currency", length = 10)
+	private String currency = "INR";
 
-    @Column(name = "key_secret", length = 150)
-    private String keySecret;
+	// --- Auto-Assignment Configuration ---
+	@Builder.Default
+	@Column(name = "assignment_type", nullable = false, length = 30)
+	private String assignmentType = "AUTO"; // AUTO, MANUAL
 
-    @Column(name = "webhook_secret", length = 150)
-    private String webhookSecret;
+	@Builder.Default
+	@Column(name = "initial_radius_km", nullable = false)
+	private Double initialRadiusKm = 5.0;
 
-    @Builder.Default
-    @Column(name = "currency", length = 10)
-    private String currency = "INR";
+	@Builder.Default
+	@Column(name = "radius_increment_km", nullable = false)
+	private Double radiusIncrementKm = 5.0;
 
-    @Builder.Default
-    @Column(name = "environment", length = 20)
-    private String environment = "TEST"; // TEST, LIVE
+	@Builder.Default
+	@Column(name = "max_radius_km", nullable = false)
+	private Double maxRadiusKm = 20.0;
 
-    // --- Auto-Assignment Configuration ---
-    @Builder.Default
-    @Column(name = "assignment_type", nullable = false, length = 30)
-    private String assignmentType = "AUTO"; // AUTO, MANUAL
+	@Builder.Default
+	@Column(name = "assignment_timeout_seconds", nullable = false)
+	private Integer assignmentTimeoutSeconds = 30;
 
-    @Builder.Default
-    @Column(name = "initial_radius_km", nullable = false)
-    private Double initialRadiusKm = 5.0;
+	@Builder.Default
+	@Column(name = "max_location_age_seconds", nullable = false)
+	private Integer maxLocationAgeSeconds = 300; // 5 mins
 
-    @Builder.Default
-    @Column(name = "radius_increment_km", nullable = false)
-    private Double radiusIncrementKm = 5.0;
+	@Builder.Default
+	@Column(name = "notify_admin_when_unassigned", nullable = false)
+	private Boolean notifyAdminWhenUnassigned = true;
 
-    @Builder.Default
-    @Column(name = "max_radius_km", nullable = false)
-    private Double maxRadiusKm = 20.0;
+	@CreationTimestamp
+	@Column(name = "created_at", nullable = false, updatable = false, columnDefinition = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+	private LocalDateTime createdAt;
 
-    @Builder.Default
-    @Column(name = "assignment_timeout_seconds", nullable = false)
-    private Integer assignmentTimeoutSeconds = 30;
+	@UpdateTimestamp
+	@Column(name = "updated_at", nullable = false, columnDefinition = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP")
+	private LocalDateTime updatedAt;
 
-    @Builder.Default
-    @Column(name = "max_location_age_seconds", nullable = false)
-    private Integer maxLocationAgeSeconds = 300; // 5 mins
-
-    @Builder.Default
-    @Column(name = "notify_admin_when_unassigned", nullable = false)
-    private Boolean notifyAdminWhenUnassigned = true;
-
-    @CreationTimestamp
-    @Column(name = "created_at", nullable = false, updatable = false, columnDefinition = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
-    private LocalDateTime createdAt;
-
-    @UpdateTimestamp
-    @Column(name = "updated_at", nullable = false, columnDefinition = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP")
-    private LocalDateTime updatedAt;
+	@Column(name = "map_key")
+	private String mapKey;
 }

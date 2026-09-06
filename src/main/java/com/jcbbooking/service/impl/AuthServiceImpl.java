@@ -49,8 +49,8 @@ public class AuthServiceImpl implements AuthService {
             throw new OtpException("Invalid OTP purpose: " + request.getPurpose());
         }
 
-        // If purpose is LOGIN or RESET_PASSWORD, check if user exists
-        if (purpose == OtpPurpose.LOGIN || purpose == OtpPurpose.RESET_PASSWORD) {
+        // If purpose is RESET_PASSWORD, check if user exists
+        if (purpose == OtpPurpose.RESET_PASSWORD) {
             userRepository.findByPhone(request.getPhone())
                     .orElseThrow(() -> new ResourceNotFoundException("No registered account found with phone: " + request.getPhone()));
         }
