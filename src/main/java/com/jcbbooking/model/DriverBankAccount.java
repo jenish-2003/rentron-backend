@@ -36,6 +36,13 @@ public class DriverBankAccount {
     @Column(name = "upi_id", length = 100)
     private String upiId;
 
+    @Column(name = "bank_name", length = 100)
+    private String bankName; // e.g. HDFC Bank, ICICI Bank, State Bank of India, UPI
+
+    @Builder.Default
+    @Column(name = "is_primary", nullable = false)
+    private Boolean isPrimary = false;
+
     @Builder.Default
     @Column(name = "is_verified", nullable = false)
     private Boolean isVerified = true;

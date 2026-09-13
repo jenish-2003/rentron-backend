@@ -43,6 +43,21 @@ public class WebSocketNotificationService {
         }
     }
 
+    public void sendSupportMessageToUser(Long userId, Map<String, Object> supportPayload) {
+        log.info("Sending STOMP support message notification to user ID {}", userId);
+        try {
+            messagingTemplate.convertAndSendToUser(
+                    String.valueOf(userId),
+                    "/queue/support-messages",
+                    (Object) supportPayload
+            );
+            messagingTemplate.convertAndSend("/topic/support-messages/" + userId, (Object) supportPayload);
+            messagingTemplate.convertAndSend("/topic/booking-offers/" + userId, (Object) supportPayload);
+        } catch (Exception e) {
+            log.error("Failed to send WebSocket support message to user {}: {}", userId, e.getMessage());
+        }
+    }
+
     public void sendAdminAssignmentFailedNotification(Map<String, Object> adminPayload) {
         log.warn("Sending STOMP admin notification for failed booking assignment");
         try {

@@ -9,4 +9,5 @@ import java.util.List;
 public interface DriverWithdrawalRepository extends JpaRepository<DriverWithdrawal, Long> {
     List<DriverWithdrawal> findAllByDriverIdOrderByRequestedAtDesc(Long driverId);
     List<DriverWithdrawal> findAllByUserIdOrderByRequestedAtDesc(Long userId);
+    List<DriverWithdrawal> findAllByOrderByRequestedAtDesc();
 }

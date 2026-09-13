@@ -2,7 +2,9 @@ package com.jcbbooking.controller;
 
 import com.jcbbooking.model.Booking;
 import com.jcbbooking.model.BookingSetting;
+import com.jcbbooking.model.User;
 import com.jcbbooking.repository.BookingRepository;
+import com.jcbbooking.repository.UserRepository;
 import com.jcbbooking.service.BookingAssignmentService;
 import com.jcbbooking.util.ApiResponse;
 import lombok.RequiredArgsConstructor;
@@ -15,6 +17,7 @@ import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -24,6 +27,7 @@ import java.util.Map;
 public class PaymentController {
 
     private final BookingRepository bookingRepository;
+    private final UserRepository userRepository;
     private final BookingAssignmentService bookingAssignmentService;
 
     @PostMapping("/create-order")
@@ -93,6 +97,67 @@ public class PaymentController {
         bookingAssignmentService.startAutoAssignmentProcess(bookingId);
 
         return ResponseEntity.ok(ApiResponse.success("Payment verified successfully and auto-assignment triggered", razorpayPaymentId));
+    }
+
+    @GetMapping("/admin/transactions")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getAdminTransactions() {
+        List<Booking> bookings = bookingRepository.findAll();
+        double grossRevenue = bookings.stream()
+                .filter(b -> "PAID".equalsIgnoreCase(b.getPaymentStatus()) || "SETTLED".equalsIgnoreCase(b.getPaymentStatus()))
+                .mapToDouble(b -> b.getTotalAmount() != null ? b.getTotalAmount() : 0.0)
+                .sum();
+
+        double pendingSettlement = bookings.stream()
+                .filter(b -> "PENDING".equalsIgnoreCase(b.getPaymentStatus()) || "PROCESSING".equalsIgnoreCase(b.getPaymentStatus()))
+                .mapToDouble(b -> b.getTotalAmount() != null ? b.getTotalAmount() : 0.0)
+                .sum();
+
+        List<Map<String, Object>> transactions = bookings.stream().map(b -> {
+            Map<String, Object> map = new HashMap<>();
+            User customer = b.getCustomerId() != null ? userRepository.findById(b.getCustomerId()).orElse(null) : null;
+            String billingName = customer != null && customer.getFullName() != null ? customer.getFullName() : ("Customer #" + b.getCustomerId());
+            String customerPhone = customer != null && customer.getPhone() != null ? customer.getPhone() : "";
+
+            map.put("id", b.getId());
+            map.put("transactionId", "TXN-" + (10000 + b.getId()));
+            map.put("bookingId", b.getId());
+            map.put("bookingNumber", b.getBookingNumber());
+            map.put("billingAccount", billingName);
+            map.put("customerPhone", customerPhone);
+            map.put("amountCharged", b.getTotalAmount() != null ? b.getTotalAmount() : 0.0);
+            map.put("gatewayRef", "pay_RAZ" + (840100 + b.getId()));
+            map.put("paymentStatus", b.getPaymentStatus() != null ? b.getPaymentStatus() : "PENDING");
+            map.put("bookingStatus", b.getStatus());
+            map.put("createdAt", b.getCreatedAt());
+            return map;
+        }).toList();
+
+        Map<String, Object> responseData = new HashMap<>();
+        responseData.put("grossRevenue", grossRevenue);
+        responseData.put("pendingSettlement", pendingSettlement);
+        responseData.put("totalTransactions", transactions.size());
+        responseData.put("transactions", transactions);
+
+        return ResponseEntity.ok(ApiResponse.success("Admin transactions retrieved successfully", responseData));
+    }
+
+    @PutMapping("/admin/transactions/{bookingId}/status")
+    @Transactional
+    public ResponseEntity<ApiResponse<Booking>> updatePaymentStatus(
+            @PathVariable Long bookingId,
+            @RequestParam String status) {
+
+        Booking booking = bookingRepository.findById(bookingId).orElse(null);
+        if (booking == null) {
+            return ResponseEntity.badRequest().body(ApiResponse.error("Booking not found"));
+        }
+
+        booking.setPaymentStatus(status.toUpperCase());
+        if ("PAID".equalsIgnoreCase(status) && "PENDING".equalsIgnoreCase(booking.getStatus())) {
+            booking.setStatus("CONFIRMED");
+        }
+        Booking saved = bookingRepository.save(booking);
+        return ResponseEntity.ok(ApiResponse.success("Payment status updated successfully", saved));
     }
 
     private boolean verifyHmacSha256(String data, String secret, String expectedSignature) {

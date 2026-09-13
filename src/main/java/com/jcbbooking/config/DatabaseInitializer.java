@@ -155,8 +155,9 @@ public class DatabaseInitializer implements CommandLineRunner {
         Menu product = updateOrCreateMenu("Product", "products", null, "/products", "box-icon", 3);
         Menu booking = updateOrCreateMenu("Booking", "bookings", null, "/bookings", "calendar-icon", 4);
         Menu payment = updateOrCreateMenu("Payment", "payments", null, "/payments", "money-icon", 5);
-        Menu support = updateOrCreateMenu("Support", "support", null, "/support", "chat-icon", 6);
-        Menu settings = updateOrCreateMenu("Setting", "settings", null, "/settings", "settings-icon", 7);
+        Menu payout = updateOrCreateMenu("Payout Requests", "payouts", null, "/payouts", "credit-card-icon", 6);
+        Menu support = updateOrCreateMenu("Support", "support", null, "/support", "chat-icon", 7);
+        Menu settings = updateOrCreateMenu("Setting", "settings", null, "/settings", "settings-icon", 8);
 
         Menu bookingSetting = updateOrCreateMenu("Booking Settings", "booking_settings", settings, "/settings/booking", "sliders-icon", 1);
         Menu menuSetup = updateOrCreateMenu("Menu Management", "menu_setup", settings, "/settings/menus", "list-icon", 2);

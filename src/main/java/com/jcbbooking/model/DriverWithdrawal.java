@@ -24,6 +24,21 @@ public class DriverWithdrawal {
     @Column(name = "user_id", nullable = false)
     private Long userId;
 
+    @Column(name = "bank_account_id")
+    private Long bankAccountId;
+
+    @Column(name = "bank_account_details", length = 255)
+    private String bankAccountDetails;
+
+    @Column(name = "driver_name", length = 150)
+    private String driverName;
+
+    @Column(name = "driver_phone", length = 30)
+    private String driverPhone;
+
+    @Column(name = "processed_at")
+    private LocalDateTime processedAt;
+
     @Column(name = "amount", nullable = false)
     private Double amount;
 

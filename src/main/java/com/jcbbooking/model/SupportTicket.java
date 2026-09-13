@@ -37,6 +37,12 @@ public class SupportTicket {
     @Column(name = "description", columnDefinition = "TEXT")
     private String description;
 
+    @Column(name = "attachment_url", length = 512)
+    private String attachmentUrl;
+
+    @Column(name = "attachment_name", length = 255)
+    private String attachmentName;
+
     @Builder.Default
     @Column(name = "status", nullable = false, length = 30)
     private String status = "OPEN"; // OPEN, IN_PROGRESS, RESOLVED, CLOSED, REOPENED

@@ -16,6 +16,8 @@ import org.springframework.web.bind.annotation.*;
 import java.time.LocalDateTime;
 import java.util.*;
 
+import com.jcbbooking.repository.UserNotificationRepository;
+
 @RestController
 @RequestMapping("/api/v1/support")
 @RequiredArgsConstructor
@@ -24,6 +26,7 @@ public class SupportController {
 
     private final SupportTicketRepository supportTicketRepository;
     private final SupportMessageRepository supportMessageRepository;
+    private final UserNotificationRepository userNotificationRepository;
     private final WebSocketNotificationService webSocketNotificationService;
 
     @GetMapping("/tickets")
@@ -31,7 +34,7 @@ public class SupportController {
             @AuthenticationPrincipal CustomUserDetails userDetails) {
         log.info("REST request to list support tickets for user ID: {}", userDetails.getId());
         if (userDetails.getUser().getRole() == Role.ADMIN) {
-            return ResponseEntity.ok(ApiResponse.success("All support tickets retrieved", supportTicketRepository.findAll()));
+            return ResponseEntity.ok(ApiResponse.success("All support tickets retrieved", supportTicketRepository.findAllByOrderByCreatedAtDesc()));
         }
         List<SupportTicket> list = supportTicketRepository.findAllByUserIdOrderByCreatedAtDesc(userDetails.getId());
         return ResponseEntity.ok(ApiResponse.success("Tickets retrieved successfully", list));
@@ -88,6 +91,8 @@ public class SupportController {
                     .senderUserId(userDetails.getId())
                     .senderRole(userDetails.getUser().getRole().name())
                     .message(ticketRequest.getDescription())
+                    .attachmentUrl(savedTicket.getAttachmentUrl())
+                    .attachmentName(savedTicket.getAttachmentName())
                     .build();
             supportMessageRepository.save(initialMsg);
         }
@@ -132,12 +137,33 @@ public class SupportController {
         }
         supportTicketRepository.save(ticket);
 
+        // Create notification entry for user when admin replies
+        if (userDetails.getUser().getRole() == Role.ADMIN) {
+            try {
+                UserNotification notif = UserNotification.builder()
+                        .userId(ticket.getUserId())
+                        .targetType("INDIVIDUAL_USER")
+                        .notificationType("SUPPORT")
+                        .title("New Support Message (" + ticket.getTicketNumber() + ")")
+                        .message(savedMessage.getMessage() != null ? savedMessage.getMessage() : "Attached file")
+                        .deepLink("/support?ticketId=" + ticket.getId())
+                        .isRead(false)
+                        .build();
+                userNotificationRepository.save(notif);
+            } catch (Exception ex) {
+                log.error("Error creating UserNotification entity: {}", ex.getMessage());
+            }
+        }
+
         // Broadcast real-time message via WebSocket
         Map<String, Object> wsPayload = new HashMap<>();
         wsPayload.put("type", "SUPPORT_CHAT_MESSAGE");
         wsPayload.put("ticketId", id);
+        wsPayload.put("ticketNumber", ticket.getTicketNumber());
+        wsPayload.put("subject", ticket.getSubject());
+        wsPayload.put("category", ticket.getCategory());
         wsPayload.put("message", savedMessage);
-        webSocketNotificationService.sendBookingOfferToUser(ticket.getUserId(), wsPayload);
+        webSocketNotificationService.sendSupportMessageToUser(ticket.getUserId(), wsPayload);
 
         return ResponseEntity.ok(ApiResponse.success("Message sent successfully", savedMessage));
     }
@@ -189,6 +215,14 @@ public class SupportController {
         }
 
         SupportTicket saved = supportTicketRepository.save(ticket);
+
+        Map<String, Object> wsPayload = new HashMap<>();
+        wsPayload.put("type", "SUPPORT_TICKET_STATUS");
+        wsPayload.put("ticketId", id);
+        wsPayload.put("ticketNumber", ticket.getTicketNumber());
+        wsPayload.put("status", saved.getStatus());
+        webSocketNotificationService.sendSupportMessageToUser(ticket.getUserId(), wsPayload);
+
         return ResponseEntity.ok(ApiResponse.success("Ticket status updated to " + newStatus, saved));
     }
 }

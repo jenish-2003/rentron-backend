@@ -24,5 +24,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
                 .withSockJS();
         registry.addEndpoint("/ws-rentron")
                 .setAllowedOriginPatterns("*");
+        registry.addEndpoint("/ws-rentron/websocket")
+                .setAllowedOriginPatterns("*");
     }
 }
