@@ -72,4 +72,8 @@ public class BookingSetting {
 
 	@Column(name = "map_key")
 	private String mapKey;
+
+	@Builder.Default
+	@Column(name = "support_phone", length = 30)
+	private String supportPhone = "+91 98765 43210";
 }

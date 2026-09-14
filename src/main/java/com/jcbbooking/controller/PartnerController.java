@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.jcbbooking.model.Contractor;
+import com.jcbbooking.model.Document;
 import com.jcbbooking.model.Driver;
 import com.jcbbooking.model.PartnerApproval;
 import com.jcbbooking.model.Role;
@@ -262,10 +263,34 @@ public class PartnerController {
         if (partner.getPhone() == null || partner.getPhone().trim().isEmpty()) {
             return ResponseEntity.badRequest().body(ApiResponse.error("Phone number is required"));
         }
-        if (partnerApprovalRepository.existsByPhone(partner.getPhone()) || 
-            driverRepository.existsByPhone(partner.getPhone()) || 
-            contractorRepository.existsByPhone(partner.getPhone())) {
-            return ResponseEntity.badRequest().body(ApiResponse.error("Partner with phone already exists"));
+        PartnerApproval existingApproval = partnerApprovalRepository.findByPhone(partner.getPhone()).orElse(null);
+        Driver existingDriver = driverRepository.findByPhone(partner.getPhone()).orElse(null);
+        Contractor existingContractor = contractorRepository.findByPhone(partner.getPhone()).orElse(null);
+
+        if (existingApproval != null || existingDriver != null || existingContractor != null) {
+            boolean isPending = (existingApproval != null && "PENDING_VERIFICATION".equalsIgnoreCase(existingApproval.getStatus())) ||
+                              (existingDriver != null && "PENDING_VERIFICATION".equalsIgnoreCase(existingDriver.getStatus())) ||
+                              (existingContractor != null && "PENDING_VERIFICATION".equalsIgnoreCase(existingContractor.getStatus()));
+
+            if (isPending) {
+                log.info("Partner with phone {} already exists under PENDING_VERIFICATION. Updating existing record.", partner.getPhone());
+                if (existingApproval != null) {
+                    if (partner.getFullName() != null) existingApproval.setFullName(partner.getFullName());
+                    if (partner.getEmail() != null) existingApproval.setEmail(partner.getEmail());
+                    if (partner.getExperience() != null) existingApproval.setExperience(partner.getExperience());
+                    partnerApprovalRepository.save(existingApproval);
+                }
+                if (existingDriver != null) {
+                    if (partner.getFullName() != null) existingDriver.setFullName(partner.getFullName());
+                    if (partner.getEmail() != null) existingDriver.setEmail(partner.getEmail());
+                    if (partner.getExperience() != null) existingDriver.setExperience(partner.getExperience());
+                    driverRepository.save(existingDriver);
+                }
+                PartnerApproval returnObj = existingApproval != null ? existingApproval : partner;
+                return ResponseEntity.ok(ApiResponse.success("Partner application updated successfully and pending verification", returnObj));
+            } else {
+                return ResponseEntity.badRequest().body(ApiResponse.error("Partner with phone already exists"));
+            }
         }
 
         if (partner.getStatus() == null) {
@@ -281,7 +306,25 @@ public class PartnerController {
             partner.setTotalEarnings(0.0);
         }
 
-        // 1. Save PartnerApproval record with its own auto-increment ID
+        // 1. Create or resolve User entry with active = false (0) until Admin approves
+        Role role = "CONTRACTOR".equalsIgnoreCase(partner.getPartnerType()) ? Role.CONTRACTOR : Role.DRIVER;
+        User user = userRepository.findByPhone(partner.getPhone()).orElse(null);
+        if (user == null) {
+            String rawPassword = partner.getPassword() != null && !partner.getPassword().trim().isEmpty()
+                    ? partner.getPassword() : "123456";
+            user = User.builder()
+                    .phone(partner.getPhone())
+                    .fullName(partner.getFullName())
+                    .email(partner.getEmail())
+                    .role(role)
+                    .verified(true)
+                    .active(false) // active = 0 (Pending Admin Approval)
+                    .passwordHash(passwordEncoder.encode(rawPassword))
+                    .build();
+            user = userRepository.save(user);
+        }
+
+        partner.setUserId(user.getId());
         partner.setId(null);
         PartnerApproval savedApproval = partnerApprovalRepository.save(partner);
 
@@ -297,9 +340,12 @@ public class PartnerController {
                     .status(partner.getStatus())
                     .rating(partner.getRating())
                     .build();
-            contractorRepository.save(contractor);
+            Contractor savedContractor = contractorRepository.save(contractor);
+            user.setContractorId(savedContractor.getId());
+            userRepository.save(user);
         } else {
             Driver driver = Driver.builder()
+                    .userId(user.getId())
                     .fullName(partner.getFullName())
                     .phone(partner.getPhone())
                     .email(partner.getEmail())
@@ -312,7 +358,9 @@ public class PartnerController {
                     .totalJobs(0)
                     .totalEarnings(0.0)
                     .build();
-            driverRepository.save(driver);
+            Driver savedDriver = driverRepository.save(driver);
+            user.setDriverId(savedDriver.getId());
+            userRepository.save(user);
         }
 
         return ResponseEntity.ok(ApiResponse.success("Partner application registered successfully and pending verification", savedApproval));

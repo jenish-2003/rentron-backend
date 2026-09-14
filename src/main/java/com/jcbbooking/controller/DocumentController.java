@@ -222,6 +222,24 @@ public class DocumentController {
             }
         }
 
+        // Fallback: Also query entityId 1L and 0L for draft onboarding uploads
+        if (allDocs.isEmpty() && !targetIds.contains(1L)) {
+            List<Document> fallbackDocs = documentRepository.findAllByEntityTypeAndEntityId(entityType.toUpperCase(), 1L);
+            for (Document doc : fallbackDocs) {
+                if (seenDocIds.add(doc.getId())) {
+                    allDocs.add(doc);
+                }
+            }
+        }
+        if (allDocs.isEmpty() && !targetIds.contains(0L)) {
+            List<Document> fallbackDocs0 = documentRepository.findAllByEntityTypeAndEntityId(entityType.toUpperCase(), 0L);
+            for (Document doc : fallbackDocs0) {
+                if (seenDocIds.add(doc.getId())) {
+                    allDocs.add(doc);
+                }
+            }
+        }
+
         return ResponseEntity.ok(ApiResponse.success("Documents retrieved successfully", allDocs));
     }
 

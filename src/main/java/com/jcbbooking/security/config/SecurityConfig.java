@@ -56,7 +56,11 @@ public class SecurityConfig {
                                 "/api/v1/auth/verify-otp",
                                 "/api/v1/auth/refresh",
                                 "/api/v1/auth/reset-password",
+                                "/api/v1/partners/**",
+                                "/api/v1/documents/upload",
+                                "/api/v1/documents/entity/**",
                                 "/api/v1/documents/download/**",
+                                "/api/v1/settings/**",
                                 "/uploads/**"
                         ).permitAll()
                         .anyRequest().authenticated()

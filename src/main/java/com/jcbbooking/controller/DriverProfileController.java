@@ -26,16 +26,76 @@ public class DriverProfileController {
     private final DriverRepository driverRepository;
     private final UserRepository userRepository;
     private final UserPreferenceRepository userPreferenceRepository;
+    private final com.jcbbooking.repository.PartnerApprovalRepository partnerApprovalRepository;
 
     @GetMapping
     public ResponseEntity<ApiResponse<Driver>> getMyProfile(@AuthenticationPrincipal CustomUserDetails userDetails) {
-        log.info("REST request for authenticated driver profile: {}", userDetails.getId());
-        Driver driver = driverRepository.findByUserId(userDetails.getId())
-                .orElseGet(() -> driverRepository.findByPhone(userDetails.getUser().getPhone()).orElse(null));
-
-        if (driver == null) {
-            return ResponseEntity.status(404).body(ApiResponse.error("Driver profile not found"));
+        log.info("REST request for authenticated driver profile: {}", userDetails != null ? userDetails.getId() : "null");
+        if (userDetails == null || userDetails.getUser() == null) {
+            return ResponseEntity.status(401).body(ApiResponse.error("Unauthorized"));
         }
+
+        String rawPhone = userDetails.getUser().getPhone();
+        String cleanPhone = rawPhone != null ? rawPhone.replaceAll("[^0-9]", "") : "";
+        if (cleanPhone.length() > 10) {
+            cleanPhone = cleanPhone.substring(cleanPhone.length() - 10);
+        }
+
+        Driver driver = driverRepository.findByUserId(userDetails.getId()).orElse(null);
+        if (driver == null && rawPhone != null) {
+            driver = driverRepository.findByPhone(rawPhone).orElse(null);
+        }
+
+        // Fuzzy/Cleaned phone search across drivers
+        if (driver == null && !cleanPhone.isEmpty()) {
+            final String last10 = cleanPhone;
+            driver = driverRepository.findAll().stream()
+                    .filter(d -> d.getPhone() != null && d.getPhone().replaceAll("[^0-9]", "").endsWith(last10))
+                    .findFirst().orElse(null);
+        }
+
+        // Fallback to PartnerApproval table
+        if (driver == null && rawPhone != null) {
+            final String phoneSearch = rawPhone;
+            final String last10 = cleanPhone;
+            com.jcbbooking.model.PartnerApproval pa = partnerApprovalRepository.findByPhone(phoneSearch)
+                    .orElseGet(() -> partnerApprovalRepository.findAll().stream()
+                            .filter(p -> p.getPhone() != null && p.getPhone().replaceAll("[^0-9]", "").endsWith(last10))
+                            .findFirst().orElse(null));
+
+            if (pa != null) {
+                driver = Driver.builder()
+                        .userId(userDetails.getId())
+                        .fullName(pa.getFullName())
+                        .phone(pa.getPhone())
+                        .email(pa.getEmail())
+                        .experience(pa.getExperience())
+                        .status(pa.getStatus() != null ? pa.getStatus() : "PENDING_VERIFICATION")
+                        .rating(pa.getRating() != null ? pa.getRating() : 4.0)
+                        .totalJobs(0)
+                        .totalEarnings(0.0)
+                        .build();
+                driver = driverRepository.save(driver);
+                log.info("Created missing Driver profile for user ID {} from PartnerApproval phone {}", userDetails.getId(), pa.getPhone());
+            }
+        }
+
+        // Final fallback: if authenticated user exists, create a draft Driver profile so data is NEVER null
+        if (driver == null && userDetails.getUser() != null) {
+            driver = Driver.builder()
+                    .userId(userDetails.getId())
+                    .fullName(userDetails.getUser().getFullName() != null ? userDetails.getUser().getFullName() : "Driver")
+                    .phone(userDetails.getUser().getPhone())
+                    .email(userDetails.getUser().getEmail())
+                    .status("PENDING_VERIFICATION")
+                    .rating(4.0)
+                    .totalJobs(0)
+                    .totalEarnings(0.0)
+                    .build();
+            driver = driverRepository.save(driver);
+            log.info("Created draft Driver profile for user ID {}", userDetails.getId());
+        }
+
         return ResponseEntity.ok(ApiResponse.success("Profile retrieved successfully", driver));
     }
 

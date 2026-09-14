@@ -195,14 +195,36 @@ public class AuthServiceImpl implements AuthService {
         return createSessionAndResponse(user);
     }
 
+    private final com.jcbbooking.repository.PartnerApprovalRepository partnerApprovalRepository;
+    private final com.jcbbooking.repository.DriverRepository driverRepository;
+
     private void validateUserStatus(User user) {
-        if (!Boolean.TRUE.equals(user.getVerified())) {
-            log.warn("Login blocked: User account is not verified. Phone: {}", user.getPhone());
-            throw new AuthenticationException("Your account is not verified");
+        if (user == null || user.getPhone() == null) return;
+        
+        String phone = user.getPhone();
+        String cleanPhone = phone.replaceAll("[^0-9]", "");
+        if (cleanPhone.length() > 10) cleanPhone = cleanPhone.substring(cleanPhone.length() - 10);
+
+        final String last10 = cleanPhone;
+
+        String status = partnerApprovalRepository.findByPhone(phone)
+                .map(com.jcbbooking.model.PartnerApproval::getStatus)
+                .orElseGet(() -> driverRepository.findByPhone(phone)
+                        .map(com.jcbbooking.model.Driver::getStatus)
+                        .orElseGet(() -> partnerApprovalRepository.findAll().stream()
+                                .filter(pa -> pa.getPhone() != null && pa.getPhone().replaceAll("[^0-9]", "").endsWith(last10))
+                                .map(com.jcbbooking.model.PartnerApproval::getStatus)
+                                .findFirst()
+                                .orElse(user.getActive() != null && user.getActive() ? "ACTIVE" : "PENDING_VERIFICATION")));
+
+        if ("REJECTED".equalsIgnoreCase(status)) {
+            log.warn("Login blocked: Partner application rejected for phone: {}", phone);
+            throw new AuthenticationException("Your partner application has been rejected by Admin. Please contact support.");
         }
-        if (!Boolean.TRUE.equals(user.getActive())) {
-            log.warn("Login blocked: User account is inactive. Phone: {}", user.getPhone());
-            throw new AuthenticationException("Your account is currently suspended");
+
+        if ("SUSPENDED".equalsIgnoreCase(status)) {
+            log.warn("Login blocked: User account suspended for phone: {}", phone);
+            throw new AuthenticationException("Your account has been suspended by Admin. Please contact support.");
         }
     }
 

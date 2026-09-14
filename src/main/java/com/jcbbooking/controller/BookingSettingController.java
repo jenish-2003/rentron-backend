@@ -44,6 +44,7 @@ public class BookingSettingController {
                 .maxLocationAgeSeconds(settings.getMaxLocationAgeSeconds())
                 .notifyAdminWhenUnassigned(settings.getNotifyAdminWhenUnassigned())
                 .mapKey(settings.getMapKey())
+                .supportPhone(settings.getSupportPhone())
                 .createdAt(settings.getCreatedAt())
                 .updatedAt(settings.getUpdatedAt())
                 .build();
@@ -73,6 +74,7 @@ public class BookingSettingController {
         if (request.getMaxLocationAgeSeconds() != null) existing.setMaxLocationAgeSeconds(request.getMaxLocationAgeSeconds());
         if (request.getNotifyAdminWhenUnassigned() != null) existing.setNotifyAdminWhenUnassigned(request.getNotifyAdminWhenUnassigned());
         if (request.getMapKey() != null) existing.setMapKey(request.getMapKey());
+        if (request.getSupportPhone() != null) existing.setSupportPhone(request.getSupportPhone());
 
         BookingSetting saved = bookingSettingRepository.save(existing);
         return ResponseEntity.ok(ApiResponse.success("Booking settings updated successfully", saved));
