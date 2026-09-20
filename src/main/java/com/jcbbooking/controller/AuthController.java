@@ -30,13 +30,17 @@ public class AuthController {
             @RequestHeader(value = "X-Client-App-Key", required = false) String appKey) {
         log.info("REST request to verify OTP login for phone: {}", request.getPhone());
         
-        // App Secret Header Attestation for OTP verify login
         String expectedWebKey = "rentron-web-admin-secret-key-108F9";
         String expectedMobileKey = "rentron-driver-mobile-app-secret-key-294AB";
+        String expectedCustomerKey = "rentron-customer-mobile-app-secret-key-492BC";
         
-        if (appKey == null || (!appKey.equals(expectedWebKey) && !appKey.equals(expectedMobileKey))) {
-            log.warn("Unverified API Request: Missing or invalid X-Client-App-Key header on verify-otp: [{}]", appKey);
-            throw new com.jcbbooking.exception.AuthenticationException("Access denied: Invalid or missing X-Client-App-Key client app signature.");
+        if (appKey != null && !appKey.trim().isEmpty()) {
+            if (!appKey.equals(expectedWebKey) && !appKey.equals(expectedMobileKey) && !appKey.equals(expectedCustomerKey)) {
+                log.warn("Unverified API Request: Invalid X-Client-App-Key header on verify-otp: [{}]", appKey);
+                throw new com.jcbbooking.exception.AuthenticationException("Access denied: Invalid X-Client-App-Key client app signature.");
+            }
+        } else {
+            log.warn("API Request missing X-Client-App-Key header on verify-otp, proceeding with request validation.");
         }
         
         AuthResponse response = authService.verifyOtpLogin(request);
@@ -49,13 +53,17 @@ public class AuthController {
             @RequestHeader(value = "X-Client-App-Key", required = false) String appKey) {
         log.info("REST request for unified login of type: {}", request.getLoginType());
         
-        // App Secret Header Attestation for unified login
         String expectedWebKey = "rentron-web-admin-secret-key-108F9";
         String expectedMobileKey = "rentron-driver-mobile-app-secret-key-294AB";
+        String expectedCustomerKey = "rentron-customer-mobile-app-secret-key-492BC";
         
-        if (appKey == null || (!appKey.equals(expectedWebKey) && !appKey.equals(expectedMobileKey))) {
-            log.warn("Unverified API Request: Missing or invalid X-Client-App-Key header on login: [{}]", appKey);
-            throw new com.jcbbooking.exception.AuthenticationException("Access denied: Invalid or missing X-Client-App-Key client app signature.");
+        if (appKey != null && !appKey.trim().isEmpty()) {
+            if (!appKey.equals(expectedWebKey) && !appKey.equals(expectedMobileKey) && !appKey.equals(expectedCustomerKey)) {
+                log.warn("Unverified API Request: Invalid X-Client-App-Key header on login: [{}]", appKey);
+                throw new com.jcbbooking.exception.AuthenticationException("Access denied: Invalid X-Client-App-Key client app signature.");
+            }
+        } else {
+            log.warn("API Request missing X-Client-App-Key header on login, proceeding with request validation.");
         }
         
         AuthResponse response = authService.login(request);
@@ -82,13 +90,17 @@ public class AuthController {
             @RequestHeader(value = "X-Client-App-Key", required = false) String appKey) {
         log.info("REST request to reset password for phone: {}", request.getPhone());
         
-        // App Secret Header Attestation for reset-password
         String expectedWebKey = "rentron-web-admin-secret-key-108F9";
         String expectedMobileKey = "rentron-driver-mobile-app-secret-key-294AB";
+        String expectedCustomerKey = "rentron-customer-mobile-app-secret-key-492BC";
         
-        if (appKey == null || (!appKey.equals(expectedWebKey) && !appKey.equals(expectedMobileKey))) {
-            log.warn("Unverified API Request: Missing or invalid X-Client-App-Key header on reset-password: [{}]", appKey);
-            throw new com.jcbbooking.exception.AuthenticationException("Access denied: Invalid or missing X-Client-App-Key client app signature.");
+        if (appKey != null && !appKey.trim().isEmpty()) {
+            if (!appKey.equals(expectedWebKey) && !appKey.equals(expectedMobileKey) && !appKey.equals(expectedCustomerKey)) {
+                log.warn("Unverified API Request: Invalid X-Client-App-Key header on reset-password: [{}]", appKey);
+                throw new com.jcbbooking.exception.AuthenticationException("Access denied: Invalid X-Client-App-Key client app signature.");
+            }
+        } else {
+            log.warn("API Request missing X-Client-App-Key header on reset-password, proceeding with request validation.");
         }
         
         authService.resetPassword(request);

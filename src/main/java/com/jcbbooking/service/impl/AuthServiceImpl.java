@@ -127,8 +127,9 @@ public class AuthServiceImpl implements AuthService {
                 }
                 // Verify OTP
                 otpService.verifyOtp(request.getPhone(), request.getOtp(), OtpPurpose.LOGIN);
+                Role targetRole = "CUSTOMER".equalsIgnoreCase(request.getRole()) ? Role.CUSTOMER : Role.DRIVER;
                 user = userRepository.findByPhone(request.getPhone())
-                        .orElseGet(() -> autoRegisterUserForPhone(request.getPhone()));
+                        .orElseGet(() -> autoRegisterUserForPhone(request.getPhone(), targetRole));
             }
             default -> throw new AuthenticationException("Unsupported login type: " + request.getLoginType());
         }
@@ -198,7 +199,11 @@ public class AuthServiceImpl implements AuthService {
     }
 
     private User autoRegisterUserForPhone(String phone) {
-        log.info("Auto-registering new driver user for phone: {}", phone);
+        return autoRegisterUserForPhone(phone, Role.DRIVER);
+    }
+
+    private User autoRegisterUserForPhone(String phone, Role targetRole) {
+        log.info("Auto-registering new user for phone: {} with role: {}", phone, targetRole);
 
         String cleanPhone = phone != null ? phone.replaceAll("[^0-9]", "") : "";
         if (cleanPhone.length() > 10) cleanPhone = cleanPhone.substring(cleanPhone.length() - 10);
@@ -215,37 +220,40 @@ public class AuthServiceImpl implements AuthService {
             return existingUser;
         }
 
-        String name = "Driver";
+        Role userRole = targetRole != null ? targetRole : Role.DRIVER;
+        String name = userRole == Role.CUSTOMER ? "Customer" : "Driver";
         if (!cleanPhone.isEmpty()) {
             name += " (" + (cleanPhone.length() >= 4 ? cleanPhone.substring(cleanPhone.length() - 4) : cleanPhone) + ")";
         }
 
         String email = null;
 
-        // Check if PartnerApproval or Driver already exists by phone
-        com.jcbbooking.model.PartnerApproval pa = partnerApprovalRepository.findByPhone(phone)
-                .orElseGet(() -> partnerApprovalRepository.findAll().stream()
-                        .filter(p -> p.getPhone() != null && !last10.isEmpty() && p.getPhone().replaceAll("[^0-9]", "").endsWith(last10))
-                        .findFirst().orElse(null));
+        com.jcbbooking.model.Driver driver = null;
+        if (userRole == Role.DRIVER) {
+            com.jcbbooking.model.PartnerApproval pa = partnerApprovalRepository.findByPhone(phone)
+                    .orElseGet(() -> partnerApprovalRepository.findAll().stream()
+                            .filter(p -> p.getPhone() != null && !last10.isEmpty() && p.getPhone().replaceAll("[^0-9]", "").endsWith(last10))
+                            .findFirst().orElse(null));
 
-        com.jcbbooking.model.Driver driver = driverRepository.findByPhone(phone)
-                .orElseGet(() -> driverRepository.findAll().stream()
-                        .filter(d -> d.getPhone() != null && !last10.isEmpty() && d.getPhone().replaceAll("[^0-9]", "").endsWith(last10))
-                        .findFirst().orElse(null));
+            driver = driverRepository.findByPhone(phone)
+                    .orElseGet(() -> driverRepository.findAll().stream()
+                            .filter(d -> d.getPhone() != null && !last10.isEmpty() && d.getPhone().replaceAll("[^0-9]", "").endsWith(last10))
+                            .findFirst().orElse(null));
 
-        if (pa != null) {
-            if (pa.getFullName() != null && !pa.getFullName().isEmpty()) name = pa.getFullName();
-            if (pa.getEmail() != null && !pa.getEmail().isEmpty()) email = pa.getEmail();
-        } else if (driver != null) {
-            if (driver.getFullName() != null && !driver.getFullName().isEmpty()) name = driver.getFullName();
-            if (driver.getEmail() != null && !driver.getEmail().isEmpty()) email = driver.getEmail();
+            if (pa != null) {
+                if (pa.getFullName() != null && !pa.getFullName().isEmpty()) name = pa.getFullName();
+                if (pa.getEmail() != null && !pa.getEmail().isEmpty()) email = pa.getEmail();
+            } else if (driver != null) {
+                if (driver.getFullName() != null && !driver.getFullName().isEmpty()) name = driver.getFullName();
+                if (driver.getEmail() != null && !driver.getEmail().isEmpty()) email = driver.getEmail();
+            }
         }
 
         User newUser = User.builder()
                 .phone(phone)
                 .fullName(name)
                 .email(email)
-                .role(Role.DRIVER)
+                .role(userRole)
                 .verified(true)
                 .active(true)
                 .createdAt(LocalDateTime.now())

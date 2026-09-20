@@ -24,4 +24,6 @@ public class LoginRequest {
     private String otp;
 
     private String deviceType; // WEB, MOBILE
+
+    private String role; // DRIVER, CUSTOMER, CONTRACTOR, ADMIN
 }
