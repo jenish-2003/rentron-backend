@@ -87,7 +87,7 @@ public class DriverProfileController {
                     .fullName(userDetails.getUser().getFullName() != null ? userDetails.getUser().getFullName() : "Driver")
                     .phone(userDetails.getUser().getPhone())
                     .email(userDetails.getUser().getEmail())
-                    .status("PENDING_VERIFICATION")
+                    .status("DRAFT")
                     .rating(4.0)
                     .totalJobs(0)
                     .totalEarnings(0.0)

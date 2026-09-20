@@ -36,6 +36,8 @@ public class AuthServiceImpl implements AuthService {
     private final RefreshTokenRepository refreshTokenRepository;
     private final JwtTokenProvider jwtTokenProvider;
     private final PasswordEncoder passwordEncoder;
+    private final com.jcbbooking.repository.PartnerApprovalRepository partnerApprovalRepository;
+    private final com.jcbbooking.repository.DriverRepository driverRepository;
 
     @Override
     @Transactional
@@ -70,9 +72,9 @@ public class AuthServiceImpl implements AuthService {
         // 1. Verify OTP code
         otpService.verifyOtp(request.getPhone(), request.getOtpCode(), OtpPurpose.LOGIN);
 
-        // 2. Fetch User
+        // 2. Fetch or Auto-Register User
         User user = userRepository.findByPhone(request.getPhone())
-                .orElseThrow(() -> new AuthenticationException("User registration incomplete for phone: " + request.getPhone()));
+                .orElseGet(() -> autoRegisterUserForPhone(request.getPhone()));
 
         // 3. Validate user status and build session
         return generateUserSession(user);
@@ -126,7 +128,7 @@ public class AuthServiceImpl implements AuthService {
                 // Verify OTP
                 otpService.verifyOtp(request.getPhone(), request.getOtp(), OtpPurpose.LOGIN);
                 user = userRepository.findByPhone(request.getPhone())
-                        .orElseThrow(() -> new AuthenticationException("User registration incomplete for phone: " + request.getPhone()));
+                        .orElseGet(() -> autoRegisterUserForPhone(request.getPhone()));
             }
             default -> throw new AuthenticationException("Unsupported login type: " + request.getLoginType());
         }
@@ -195,8 +197,80 @@ public class AuthServiceImpl implements AuthService {
         return createSessionAndResponse(user);
     }
 
-    private final com.jcbbooking.repository.PartnerApprovalRepository partnerApprovalRepository;
-    private final com.jcbbooking.repository.DriverRepository driverRepository;
+    private User autoRegisterUserForPhone(String phone) {
+        log.info("Auto-registering new driver user for phone: {}", phone);
+
+        String cleanPhone = phone != null ? phone.replaceAll("[^0-9]", "") : "";
+        if (cleanPhone.length() > 10) cleanPhone = cleanPhone.substring(cleanPhone.length() - 10);
+        final String last10 = cleanPhone;
+
+        // 1. Check if user already exists (by exact phone or last 10 digits match)
+        User existingUser = userRepository.findByPhone(phone)
+                .orElseGet(() -> userRepository.findAll().stream()
+                        .filter(u -> u.getPhone() != null && !last10.isEmpty() && u.getPhone().replaceAll("[^0-9]", "").endsWith(last10))
+                        .findFirst().orElse(null));
+
+        if (existingUser != null) {
+            log.info("Found existing user ID {} for phone {}", existingUser.getId(), phone);
+            return existingUser;
+        }
+
+        String name = "Driver";
+        if (!cleanPhone.isEmpty()) {
+            name += " (" + (cleanPhone.length() >= 4 ? cleanPhone.substring(cleanPhone.length() - 4) : cleanPhone) + ")";
+        }
+
+        String email = null;
+
+        // Check if PartnerApproval or Driver already exists by phone
+        com.jcbbooking.model.PartnerApproval pa = partnerApprovalRepository.findByPhone(phone)
+                .orElseGet(() -> partnerApprovalRepository.findAll().stream()
+                        .filter(p -> p.getPhone() != null && !last10.isEmpty() && p.getPhone().replaceAll("[^0-9]", "").endsWith(last10))
+                        .findFirst().orElse(null));
+
+        com.jcbbooking.model.Driver driver = driverRepository.findByPhone(phone)
+                .orElseGet(() -> driverRepository.findAll().stream()
+                        .filter(d -> d.getPhone() != null && !last10.isEmpty() && d.getPhone().replaceAll("[^0-9]", "").endsWith(last10))
+                        .findFirst().orElse(null));
+
+        if (pa != null) {
+            if (pa.getFullName() != null && !pa.getFullName().isEmpty()) name = pa.getFullName();
+            if (pa.getEmail() != null && !pa.getEmail().isEmpty()) email = pa.getEmail();
+        } else if (driver != null) {
+            if (driver.getFullName() != null && !driver.getFullName().isEmpty()) name = driver.getFullName();
+            if (driver.getEmail() != null && !driver.getEmail().isEmpty()) email = driver.getEmail();
+        }
+
+        User newUser = User.builder()
+                .phone(phone)
+                .fullName(name)
+                .email(email)
+                .role(Role.DRIVER)
+                .verified(true)
+                .active(true)
+                .createdAt(LocalDateTime.now())
+                .build();
+
+        User savedUser;
+        try {
+            savedUser = userRepository.save(newUser);
+        } catch (org.springframework.dao.DataIntegrityViolationException ex) {
+            log.warn("DataIntegrityViolationException caught during auto-registration for phone: {}. Concurrent registration detected, retrieving saved user.", phone);
+            savedUser = userRepository.findByPhone(phone)
+                    .orElseGet(() -> userRepository.findAll().stream()
+                            .filter(u -> u.getPhone() != null && !last10.isEmpty() && u.getPhone().replaceAll("[^0-9]", "").endsWith(last10))
+                            .findFirst()
+                            .orElseThrow(() -> ex));
+        }
+
+        // Update driver/partnerApproval userId reference if exists
+        if (driver != null && driver.getUserId() == null) {
+            driver.setUserId(savedUser.getId());
+            driverRepository.save(driver);
+        }
+
+        return savedUser;
+    }
 
     private void validateUserStatus(User user) {
         if (user == null || user.getPhone() == null) return;

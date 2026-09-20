@@ -62,6 +62,19 @@ public class PartnerApproval {
     @Column(name = "aadhaar_number", length = 50)
     private String aadhaarNumber;
 
+    // Bank Account details
+    @Column(name = "bank_holder", length = 150)
+    private String bankHolder;
+
+    @Column(name = "bank_account_no", length = 50)
+    private String bankAccountNo;
+
+    @Column(name = "bank_ifsc", length = 20)
+    private String bankIfsc;
+
+    @Column(name = "bank_upi", length = 100)
+    private String bankUpi;
+
     @Column(name = "contractor_id")
     private Long contractorId;
 

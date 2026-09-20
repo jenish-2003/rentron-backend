@@ -48,6 +48,7 @@ public class PartnerController {
     private final UserRepository userRepository;
     private final DocumentRepository documentRepository;
     private final PasswordEncoder passwordEncoder;
+    private final com.jcbbooking.repository.DriverBankAccountRepository bankAccountRepository;
 
     @GetMapping
     public ResponseEntity<ApiResponse<Map<String, Object>>> getPartners(
@@ -268,24 +269,35 @@ public class PartnerController {
         Contractor existingContractor = contractorRepository.findByPhone(partner.getPhone()).orElse(null);
 
         if (existingApproval != null || existingDriver != null || existingContractor != null) {
-            boolean isPending = (existingApproval != null && "PENDING_VERIFICATION".equalsIgnoreCase(existingApproval.getStatus())) ||
-                              (existingDriver != null && "PENDING_VERIFICATION".equalsIgnoreCase(existingDriver.getStatus())) ||
-                              (existingContractor != null && "PENDING_VERIFICATION".equalsIgnoreCase(existingContractor.getStatus()));
+            boolean isPendingOrDraft = (existingApproval != null && ("PENDING_VERIFICATION".equalsIgnoreCase(existingApproval.getStatus()) || "DRAFT".equalsIgnoreCase(existingApproval.getStatus()))) ||
+                               (existingDriver != null && ("PENDING_VERIFICATION".equalsIgnoreCase(existingDriver.getStatus()) || "DRAFT".equalsIgnoreCase(existingDriver.getStatus()))) ||
+                               (existingContractor != null && ("PENDING_VERIFICATION".equalsIgnoreCase(existingContractor.getStatus()) || "DRAFT".equalsIgnoreCase(existingContractor.getStatus())));
 
-            if (isPending) {
-                log.info("Partner with phone {} already exists under PENDING_VERIFICATION. Updating existing record.", partner.getPhone());
+            if (isPendingOrDraft) {
+                log.info("Partner with phone {} already exists under DRAFT/PENDING_VERIFICATION. Updating existing record.", partner.getPhone());
                 if (existingApproval != null) {
                     if (partner.getFullName() != null) existingApproval.setFullName(partner.getFullName());
                     if (partner.getEmail() != null) existingApproval.setEmail(partner.getEmail());
                     if (partner.getExperience() != null) existingApproval.setExperience(partner.getExperience());
+                    existingApproval.setStatus("PENDING_VERIFICATION");
                     partnerApprovalRepository.save(existingApproval);
                 }
                 if (existingDriver != null) {
                     if (partner.getFullName() != null) existingDriver.setFullName(partner.getFullName());
                     if (partner.getEmail() != null) existingDriver.setEmail(partner.getEmail());
                     if (partner.getExperience() != null) existingDriver.setExperience(partner.getExperience());
+                    existingDriver.setStatus("PENDING_VERIFICATION");
                     driverRepository.save(existingDriver);
                 }
+                userRepository.findByPhone(partner.getPhone()).ifPresent(u -> {
+                    if (partner.getFullName() != null && !partner.getFullName().trim().isEmpty()) u.setFullName(partner.getFullName());
+                    if (partner.getEmail() != null && !partner.getEmail().trim().isEmpty()) u.setEmail(partner.getEmail());
+                    userRepository.save(u);
+                });
+                
+                // Sync Bank Account
+                saveOrUpdateBankAccount(partner.getPhone(), partner.getBankHolder(), partner.getBankAccountNo(), partner.getBankIfsc(), partner.getBankUpi(), partner.getFullName());
+
                 PartnerApproval returnObj = existingApproval != null ? existingApproval : partner;
                 return ResponseEntity.ok(ApiResponse.success("Partner application updated successfully and pending verification", returnObj));
             } else {
@@ -363,7 +375,67 @@ public class PartnerController {
             userRepository.save(user);
         }
 
+        // Sync Bank Account
+        saveOrUpdateBankAccount(partner.getPhone(), partner.getBankHolder(), partner.getBankAccountNo(), partner.getBankIfsc(), partner.getBankUpi(), partner.getFullName());
+
         return ResponseEntity.ok(ApiResponse.success("Partner application registered successfully and pending verification", savedApproval));
+    }
+
+    private void saveOrUpdateBankAccount(String phone, String bankHolder, String bankAccountNo, String bankIfsc, String bankUpi, String defaultName) {
+        if ((bankAccountNo != null && !bankAccountNo.trim().isEmpty()) ||
+            (bankUpi != null && !bankUpi.trim().isEmpty()) ||
+            (bankHolder != null && !bankHolder.trim().isEmpty())) {
+
+            User user = userRepository.findByPhone(phone).orElse(null);
+            Driver driver = driverRepository.findByPhone(phone).orElse(null);
+
+            if (user != null || driver != null) {
+                Long userId = user != null ? user.getId() : (driver != null ? driver.getUserId() : 0L);
+                Long driverId = driver != null ? driver.getId() : (userId != null ? userId : 0L);
+
+                if (userId != null && userId > 0) {
+                    String masked = bankAccountNo != null && bankAccountNo.length() >= 4
+                            ? "****" + bankAccountNo.substring(bankAccountNo.length() - 4)
+                            : (bankAccountNo != null ? bankAccountNo : (bankUpi != null ? bankUpi : "****0000"));
+
+                    String bName = (bankIfsc != null && !bankIfsc.trim().isEmpty()) ? "Bank Account" : ((bankUpi != null && !bankUpi.trim().isEmpty()) ? "UPI" : "Bank Account");
+
+                    com.jcbbooking.model.DriverBankAccount existingBank = null;
+                    if (userId != null && userId > 0) {
+                        existingBank = bankAccountRepository.findAllByUserIdOrderByIdDesc(userId).stream().findFirst().orElse(null);
+                    }
+                    if (existingBank == null && driverId != null && driverId > 0) {
+                        existingBank = bankAccountRepository.findAllByDriverIdOrderByIdDesc(driverId).stream().findFirst().orElse(null);
+                    }
+
+                    if (existingBank != null) {
+                        if (bankHolder != null && !bankHolder.trim().isEmpty()) existingBank.setAccountHolderName(bankHolder);
+                        if (bankAccountNo != null && !bankAccountNo.trim().isEmpty()) existingBank.setAccountNumberMasked(masked);
+                        if (bankIfsc != null && !bankIfsc.trim().isEmpty()) existingBank.setIfscCode(bankIfsc.toUpperCase());
+                        if (bankUpi != null && !bankUpi.trim().isEmpty()) existingBank.setUpiId(bankUpi);
+                        existingBank.setBankName(bName);
+                        if (driverId != null && driverId > 0) existingBank.setDriverId(driverId);
+                        if (userId != null && userId > 0) existingBank.setUserId(userId);
+                        bankAccountRepository.save(existingBank);
+                        log.info("Updated DriverBankAccount ID {} for user ID {}", existingBank.getId(), userId);
+                    } else {
+                        com.jcbbooking.model.DriverBankAccount newBank = com.jcbbooking.model.DriverBankAccount.builder()
+                                .driverId(driverId != null ? driverId : userId)
+                                .userId(userId)
+                                .accountHolderName(bankHolder != null && !bankHolder.trim().isEmpty() ? bankHolder : (defaultName != null ? defaultName : "Driver"))
+                                .accountNumberMasked(masked)
+                                .ifscCode(bankIfsc != null ? bankIfsc.toUpperCase() : "")
+                                .upiId(bankUpi)
+                                .bankName(bName)
+                                .isPrimary(true)
+                                .isVerified(true)
+                                .build();
+                        bankAccountRepository.save(newBank);
+                        log.info("Saved new DriverBankAccount for user ID {}", userId);
+                    }
+                }
+            }
+        }
     }
 
     @PostMapping("/{id}/approve")
