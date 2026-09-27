@@ -69,6 +69,43 @@ public class NotificationController {
         return ResponseEntity.ok(ApiResponse.success("All notifications marked as read"));
     }
 
+    @PostMapping("/notify-admin")
+    @Transactional
+    public ResponseEntity<ApiResponse<Void>> notifyAdminUsers(
+            @RequestBody Map<String, Object> payload,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+        
+        String title = (String) payload.getOrDefault("title", "New Vehicle Registered");
+        String message = (String) payload.getOrDefault("message", "A new vehicle registration has been submitted for review.");
+        String notificationType = (String) payload.getOrDefault("notificationType", "VEHICLE");
+        String deepLink = (String) payload.getOrDefault("deepLink", "/admin/approvals");
+
+        List<User> adminUsers = userRepository.findAllByRole(Role.ADMIN);
+        for (User admin : adminUsers) {
+            UserNotification notification = UserNotification.builder()
+                    .userId(admin.getId())
+                    .targetType("ADMIN")
+                    .notificationType(notificationType)
+                    .title(title)
+                    .message(message)
+                    .deepLink(deepLink)
+                    .isRead(false)
+                    .build();
+            userNotificationRepository.save(notification);
+
+            Map<String, Object> wsPayload = new HashMap<>();
+            wsPayload.put("type", "ADMIN_NOTIFICATION");
+            wsPayload.put("title", title);
+            wsPayload.put("message", message);
+            wsPayload.put("notificationType", notificationType);
+            wsPayload.put("deepLink", deepLink);
+            webSocketNotificationService.sendBookingOfferToUser(admin.getId(), wsPayload);
+        }
+
+        log.info("Admin notification sent to {} admin users for vehicle submission by user ID {}", adminUsers.size(), userDetails != null ? userDetails.getId() : "anonymous");
+        return ResponseEntity.ok(ApiResponse.success("Admins notified successfully"));
+    }
+
     @PostMapping("/devices/register")
     @Transactional
     public ResponseEntity<ApiResponse<DeviceToken>> registerDeviceToken(

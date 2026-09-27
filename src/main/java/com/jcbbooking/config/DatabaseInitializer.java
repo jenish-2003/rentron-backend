@@ -29,6 +29,7 @@ public class DatabaseInitializer implements CommandLineRunner {
     private final DriverRepository driverRepository;
     private final ContractorRepository contractorRepository;
     private final ProductRepository productRepository;
+    private final VehicleRepository vehicleRepository;
 
     @Override
     @Transactional
@@ -49,15 +50,18 @@ public class DatabaseInitializer implements CommandLineRunner {
         }
 
         try {
-            Number phoneExists = (Number) entityManager.createNativeQuery(
-                    "SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'phone_verified' AND table_schema = DATABASE()")
-                    .getSingleResult();
-            if (phoneExists != null && phoneExists.intValue() > 0) {
-                entityManager.createNativeQuery("ALTER TABLE users DROP COLUMN phone_verified").executeUpdate();
-                log.info("Successfully dropped phone_verified column from users table");
-            }
+            entityManager.createNativeQuery("ALTER TABLE vehicles MODIFY COLUMN front_photo_url LONGTEXT").executeUpdate();
+            entityManager.createNativeQuery("ALTER TABLE vehicles MODIFY COLUMN rc_front_url LONGTEXT").executeUpdate();
+            entityManager.createNativeQuery("ALTER TABLE vehicles MODIFY COLUMN rc_back_url LONGTEXT").executeUpdate();
+            entityManager.createNativeQuery("ALTER TABLE vehicles MODIFY COLUMN insurance_url LONGTEXT").executeUpdate();
+            entityManager.createNativeQuery("ALTER TABLE vehicles MODIFY COLUMN side_photo_url LONGTEXT").executeUpdate();
+            entityManager.createNativeQuery("ALTER TABLE vehicles MODIFY COLUMN rear_photo_url LONGTEXT").executeUpdate();
+            entityManager.createNativeQuery("ALTER TABLE vehicles MODIFY COLUMN cabin_photo_url LONGTEXT").executeUpdate();
+            entityManager.createNativeQuery("ALTER TABLE vehicles MODIFY COLUMN engine_plate_photo_url LONGTEXT").executeUpdate();
+            entityManager.createNativeQuery("ALTER TABLE vehicles MODIFY COLUMN vehicle_description LONGTEXT").executeUpdate();
+            log.info("Successfully altered vehicles table URL columns to LONGTEXT");
         } catch (Exception e) {
-            log.warn("Error checking/dropping phone_verified column: {}", e.getMessage());
+            log.warn("Auto-alter vehicles columns to LONGTEXT note: {}", e.getMessage());
         }
 
         if (userRepository.count() == 0) {
@@ -331,6 +335,98 @@ public class DatabaseInitializer implements CommandLineRunner {
                     .category("BIKE")
                     .description("Fast 2-wheeler city bike ride")
                     .active(true)
+                    .build());
+        }
+
+        if (vehicleRepository.count() == 0) {
+            log.info("Seeding initial DB vehicles...");
+            User driverUser = userRepository.findByPhone("+919876543212").orElse(null);
+            Long dUserId = driverUser != null ? driverUser.getId() : 3L;
+
+            vehicleRepository.save(Vehicle.builder()
+                    .userId(dUserId)
+                    .driverId(1L)
+                    .regNumber("MH 12 RE 1109")
+                    .vehicleName("CAT 424B2 Backhoe")
+                    .category("Machinery")
+                    .machineryModel("CAT 424B2")
+                    .machinerySubCategory("Backhoe")
+                    .experience("1-3 years")
+                    .mfgYear("2023")
+                    .machineClass("CAT Heavy Backhoe")
+                    .chassisVin("CAT424B2VIN99120")
+                    .engineSerial("CAT-C4.4-4410")
+                    .powertrain("DIESEL")
+                    .status("APPROVED")
+                    .isActive(true)
+                    .fetchMode("AUTO_VAHAN")
+                    .isVahanSynced(true)
+                    .submittedOn("26/09/2026")
+                    .vehicleDescription("Caterpillar 424B2 General purpose backhoe loader.")
+                    .driverName("Balaji E.")
+                    .driverPhone("7074953565")
+                    .rcFrontUrl("")
+                    .rcBackUrl("")
+                    .insuranceUrl("")
+                    .frontPhotoUrl("")
+                    .sidePhotoUrl("")
+                    .rearPhotoUrl("")
+                    .cabinPhotoUrl("")
+                    .enginePlatePhotoUrl("")
+                    .build());
+
+            vehicleRepository.save(Vehicle.builder()
+                    .userId(dUserId)
+                    .driverId(1L)
+                    .regNumber("TN 09 BK 8842")
+                    .vehicleName("JCB 3DX EcoXcellence")
+                    .category("Machinery")
+                    .machineryModel("JCB 3DX")
+                    .machinerySubCategory("Backhoe")
+                    .experience("3-5 years")
+                    .mfgYear("2022")
+                    .machineClass("Backhoe Loader Heavy Class")
+                    .chassisVin("JCB3DX2022CH89210")
+                    .engineSerial("ENG-JCB-994821")
+                    .powertrain("DIESEL")
+                    .status("APPROVED")
+                    .isActive(false)
+                    .fetchMode("AUTO_VAHAN")
+                    .isVahanSynced(true)
+                    .submittedOn("27/09/2026")
+                    .vehicleDescription("Heavy-duty JCB Backhoe Loader equipped with standard bucket and breaker attachments.")
+                    .driverName("Balaji E.")
+                    .driverPhone("7074953565")
+                    .rcFrontUrl("")
+                    .rcBackUrl("")
+                    .insuranceUrl("")
+                    .build());
+
+            vehicleRepository.save(Vehicle.builder()
+                    .userId(2L)
+                    .driverId(2L)
+                    .regNumber("KA 05 MN 4410")
+                    .vehicleName("Tata Hitachi EX 200")
+                    .category("Machinery")
+                    .machineryModel("Tata Hitachi EX 200")
+                    .machinerySubCategory("Excavator")
+                    .experience("5-10 years")
+                    .mfgYear("2021")
+                    .machineClass("Hydraulic Excavator 20-Ton Class")
+                    .chassisVin("TATAEX200CH77621")
+                    .engineSerial("CUMMINS-6BT-8841")
+                    .powertrain("DIESEL")
+                    .status("APPROVED")
+                    .isActive(true)
+                    .fetchMode("MANUAL")
+                    .isVahanSynced(false)
+                    .submittedOn("25/09/2026")
+                    .vehicleDescription("Tata Hitachi 20 Ton Excavator suitable for quarry, earthwork, and construction site levelling.")
+                    .driverName("Suren Kumar")
+                    .driverPhone("7575848698")
+                    .rcFrontUrl("")
+                    .rcBackUrl("")
+                    .insuranceUrl("")
                     .build());
         }
 

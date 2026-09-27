@@ -19,12 +19,15 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
-        registry.addEndpoint("/ws-rentron")
-                .setAllowedOriginPatterns("*")
-                .withSockJS();
+        // Pure WebSocket endpoints for native browser WebSocket clients
         registry.addEndpoint("/ws-rentron")
                 .setAllowedOriginPatterns("*");
         registry.addEndpoint("/ws-rentron/websocket")
                 .setAllowedOriginPatterns("*");
+
+        // SockJS endpoint for legacy fallback clients
+        registry.addEndpoint("/ws-rentron-sockjs")
+                .setAllowedOriginPatterns("*")
+                .withSockJS();
     }
 }
