@@ -29,6 +29,8 @@ public class BookingAssignmentService {
     private final BookingAssignmentRepository bookingAssignmentRepository;
     private final ProductAvailabilityStrategyFactory strategyFactory;
     private final WebSocketNotificationService webSocketNotificationService;
+    private final VehicleRepository vehicleRepository;
+    private final com.jcbbooking.service.VehicleMasterService vehicleMasterService;
 
     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(4);
 
@@ -245,7 +247,9 @@ public class BookingAssignmentService {
                 if (d.getLocationUpdatedAt() == null || d.getLocationUpdatedAt().isAfter(staleThreshold)) {
                     double dist = HaversineDistanceUtil.calculateDistanceKm(pickupLat, pickupLon, d.getLatitude(), d.getLongitude());
                     if (dist >= minRadiusKm && dist <= maxRadiusKm) {
-                        if (strategy.isDriverAvailable(d.getId(), booking)) {
+                        // Vehicle master requirement matching check
+                        boolean vehicleMatches = isVehicleEligibleForBooking(d.getId(), d.getUserId(), booking);
+                        if (vehicleMatches && strategy.isDriverAvailable(d.getId(), booking)) {
                             candidates.add(new CandidateWrapper("DRIVER", d.getId(), d.getUserId(), dist, d.getRating() != null ? d.getRating() : 4.0));
                         }
                     }
@@ -260,7 +264,8 @@ public class BookingAssignmentService {
                 if (c.getLocationUpdatedAt() == null || c.getLocationUpdatedAt().isAfter(staleThreshold)) {
                     double dist = HaversineDistanceUtil.calculateDistanceKm(pickupLat, pickupLon, c.getLatitude(), c.getLongitude());
                     if (dist >= minRadiusKm && dist <= maxRadiusKm) {
-                        if (strategy.isContractorAvailable(c.getId(), booking)) {
+                        boolean vehicleMatches = isVehicleEligibleForBooking(null, c.getUserId(), booking);
+                        if (vehicleMatches && strategy.isContractorAvailable(c.getId(), booking)) {
                             candidates.add(new CandidateWrapper("CONTRACTOR", c.getId(), c.getUserId(), dist, c.getRating() != null ? c.getRating() : 4.0));
                         }
                     }
@@ -276,6 +281,30 @@ public class BookingAssignmentService {
         });
 
         return candidates;
+    }
+
+    private boolean isVehicleEligibleForBooking(Long driverId, Long userId, Booking booking) {
+        Long typeId = booking.getVehicleTypeId();
+        Long modelId = booking.getVehicleModelId();
+        Long subModelId = booking.getVehicleSubModelId();
+
+        // 1. Find matching approved + active vehicles for driver/user
+        List<Vehicle> vehicles = vehicleRepository.findMatchingApprovedActiveVehicles(driverId, userId, typeId, modelId, subModelId);
+        if (vehicles.isEmpty()) {
+            return false;
+        }
+
+        // 2. Ensure at least one matching vehicle has active master items (Type, Model, SubModel)
+        for (Vehicle v : vehicles) {
+            try {
+                vehicleMasterService.validateHierarchy(v.getVehicleTypeId(), v.getVehicleModelId(), v.getVehicleSubModelId());
+                return true; // Found at least one fully active vehicle hierarchy
+            } catch (Exception ex) {
+                log.debug("Vehicle ID {} excluded from dispatch: {}", v.getId(), ex.getMessage());
+            }
+        }
+
+        return false;
     }
 
     private static class CandidateWrapper {

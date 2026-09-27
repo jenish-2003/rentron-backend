@@ -34,6 +34,15 @@ public class Booking {
     @Column(name = "driver_id")
     private Long driverId;
 
+    @Column(name = "vehicle_type_id")
+    private Long vehicleTypeId;
+
+    @Column(name = "vehicle_model_id")
+    private Long vehicleModelId;
+
+    @Column(name = "vehicle_sub_model_id")
+    private Long vehicleSubModelId;
+
     @Column(name = "pickup_address_id")
     private Long pickupAddressId;
 

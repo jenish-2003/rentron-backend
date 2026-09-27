@@ -29,6 +29,9 @@ public class DatabaseInitializer implements CommandLineRunner {
     private final DriverRepository driverRepository;
     private final ContractorRepository contractorRepository;
     private final ProductRepository productRepository;
+    private final VehicleTypeRepository vehicleTypeRepository;
+    private final VehicleModelRepository vehicleModelRepository;
+    private final VehicleSubModelRepository vehicleSubModelRepository;
 
     @Override
     @Transactional
@@ -60,6 +63,9 @@ public class DatabaseInitializer implements CommandLineRunner {
             log.warn("Error checking/dropping phone_verified column: {}", e.getMessage());
         }
 
+        // Ensure vehicle master tables and columns exist
+        initVehicleMasterSchema();
+
         if (userRepository.count() == 0) {
             log.info("Database is empty. Commencing system seeding...");
             initializeData();
@@ -81,6 +87,9 @@ public class DatabaseInitializer implements CommandLineRunner {
                 log.info("Successfully migrated {} legacy passwords to secure BCrypt hashes!", migratedCount);
             }
         }
+
+        // Always check and seed vehicle masters idempotently
+        seedVehicleMasters();
     }
 
     private Menu updateOrCreateMenu(String name, String code, Menu parent, String path, String icon, int order) {
@@ -383,4 +392,189 @@ public class DatabaseInitializer implements CommandLineRunner {
         userRepository.save(user);
         log.info("Seeded User - Role: [{}], Phone: [{}], Password: [{}]", role, phone, password);
     }
+
+    private void initVehicleMasterSchema() {
+        try {
+            log.info("Checking & initializing Vehicle Master database tables and foreign keys...");
+            
+            entityManager.createNativeQuery("""
+                CREATE TABLE IF NOT EXISTS vehicle_types (
+                    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                    name VARCHAR(100) NOT NULL,
+                    code VARCHAR(50) NOT NULL UNIQUE,
+                    description VARCHAR(255),
+                    icon_url LONGTEXT,
+                    display_order INT DEFAULT 0 NOT NULL,
+                    active BOOLEAN DEFAULT TRUE NOT NULL,
+                    created_by BIGINT,
+                    updated_by BIGINT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP NOT NULL
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """).executeUpdate();
+
+            entityManager.createNativeQuery("""
+                CREATE TABLE IF NOT EXISTS vehicle_models (
+                    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                    vehicle_type_id BIGINT NOT NULL,
+                    name VARCHAR(150) NOT NULL,
+                    code VARCHAR(100),
+                    description VARCHAR(255),
+                    icon_url LONGTEXT,
+                    display_order INT DEFAULT 0 NOT NULL,
+                    active BOOLEAN DEFAULT TRUE NOT NULL,
+                    created_by BIGINT,
+                    updated_by BIGINT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP NOT NULL,
+                    UNIQUE KEY uq_type_name (vehicle_type_id, name)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """).executeUpdate();
+
+            entityManager.createNativeQuery("""
+                CREATE TABLE IF NOT EXISTS vehicle_sub_models (
+                    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                    vehicle_model_id BIGINT NOT NULL,
+                    name VARCHAR(150) NOT NULL,
+                    code VARCHAR(100),
+                    description VARCHAR(500),
+                    manufacturer VARCHAR(150),
+                    machine_class VARCHAR(150),
+                    horse_power VARCHAR(50),
+                    capacity VARCHAR(100),
+                    fuel_type VARCHAR(50),
+                    icon_url LONGTEXT,
+                    display_order INT DEFAULT 0 NOT NULL,
+                    active BOOLEAN DEFAULT TRUE NOT NULL,
+                    created_by BIGINT,
+                    updated_by BIGINT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP NOT NULL,
+                    UNIQUE KEY uq_model_name (vehicle_model_id, name)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """).executeUpdate();
+
+            // Ensure column types are LONGTEXT
+            try { entityManager.createNativeQuery("ALTER TABLE vehicle_types MODIFY COLUMN icon_url LONGTEXT").executeUpdate(); } catch (Exception ignored) {}
+            try { entityManager.createNativeQuery("ALTER TABLE vehicle_models MODIFY COLUMN icon_url LONGTEXT").executeUpdate(); } catch (Exception ignored) {}
+            try { entityManager.createNativeQuery("ALTER TABLE vehicle_sub_models MODIFY COLUMN icon_url LONGTEXT").executeUpdate(); } catch (Exception ignored) {}
+
+            // Check & add columns to vehicles table if missing
+            addNullableColumnIfMissing("vehicles", "vehicle_type_id", "BIGINT NULL");
+            addNullableColumnIfMissing("vehicles", "vehicle_model_id", "BIGINT NULL");
+            addNullableColumnIfMissing("vehicles", "vehicle_sub_model_id", "BIGINT NULL");
+
+            // Check & add columns to bookings table if missing
+            addNullableColumnIfMissing("bookings", "vehicle_type_id", "BIGINT NULL");
+            addNullableColumnIfMissing("bookings", "vehicle_model_id", "BIGINT NULL");
+            addNullableColumnIfMissing("bookings", "vehicle_sub_model_id", "BIGINT NULL");
+
+            log.info("Vehicle Master database tables and columns initialized successfully.");
+        } catch (Exception e) {
+            log.warn("Error during vehicle master schema initialization: {}", e.getMessage());
+        }
+    }
+
+    private void addNullableColumnIfMissing(String tableName, String columnName, String columnDefinition) {
+        try {
+            Number colExists = (Number) entityManager.createNativeQuery(
+                    "SELECT COUNT(*) FROM information_schema.columns WHERE table_name = '" + tableName + "' AND column_name = '" + columnName + "' AND table_schema = DATABASE()")
+                    .getSingleResult();
+            if (colExists == null || colExists.intValue() == 0) {
+                entityManager.createNativeQuery("ALTER TABLE " + tableName + " ADD COLUMN " + columnName + " " + columnDefinition).executeUpdate();
+                log.info("Added column {} to {} table", columnName, tableName);
+            }
+        } catch (Exception e) {
+            log.warn("Error adding column {} to {}: {}", columnName, tableName, e.getMessage());
+        }
+    }
+
+    private void seedVehicleMasters() {
+        try {
+            log.info("Checking vehicle master seed data...");
+
+            // 1. Vehicle Types
+            VehicleType car = seedVehicleType("Car", "CAR", "Drive passengers", "assets/icons/car.png", 1);
+            VehicleType auto = seedVehicleType("Auto", "AUTO", "Drive passengers", "assets/icons/auto.png", 2);
+            VehicleType bike = seedVehicleType("Bike", "BIKE", "Take bike taxi trips", "assets/icons/bike.png", 3);
+            VehicleType machinery = seedVehicleType("Machinery", "MACHINERY", "Operate construction machinery", "assets/icons/machinery.png", 4);
+
+            // 2. Models under Machinery
+            VehicleModel backhoe = seedVehicleModel(machinery.getId(), "Backhoe", "BACKHOE", "Backhoe Loader Equipment", 1);
+            VehicleModel excavator = seedVehicleModel(machinery.getId(), "Excavator", "EXCAVATOR", "Hydraulic Excavators", 2);
+            VehicleModel cranes = seedVehicleModel(machinery.getId(), "Cranes", "CRANES", "Mobile Cranes", 3);
+            VehicleModel bulldozer = seedVehicleModel(machinery.getId(), "Bulldozer", "BULLDOZER", "Bulldozer Track Type", 4);
+
+            // 3. Sub Models under Backhoe
+            seedVehicleSubModel(backhoe.getId(), "JCB 3DX", "JCB_3DX", "Backhoe Loader", "JCB", "Backhoe Loader", "74 HP", "1.0 m³", "DIESEL", 1);
+            seedVehicleSubModel(backhoe.getId(), "CAT 424B2", "CAT_424B2", "Backhoe Loader", "Caterpillar", "Backhoe Loader", "75 HP", "General Purpose", "DIESEL", 2);
+            seedVehicleSubModel(backhoe.getId(), "Mahindra EarthMaster", "MAHINDRA_EM", "Backhoe Loader", "Mahindra", "Backhoe Loader", "79 HP", "Heavy Duty", "DIESEL", 3);
+
+            // Sub Models under Excavator
+            seedVehicleSubModel(excavator.getId(), "Tata Hitachi EX 200", "TH_EX200", "Hydraulic Excavator", "Tata Hitachi", "Hydraulic Excavator", "133 HP", "2.0 Ton", "DIESEL", 1);
+            seedVehicleSubModel(excavator.getId(), "Komatsu PC210", "KOMATSU_PC210", "Hydraulic Excavator", "Komatsu", "Hydraulic Excavator", "165 HP", "2.0 Ton", "DIESEL", 2);
+
+            // Sub Models under Cranes
+            seedVehicleSubModel(cranes.getId(), "Escorts TRX 2319", "ESCORTS_TRX", "Mobile Crane", "Escorts", "Mobile Crane", "110 HP", "14 Ton Heavy Duty", "DIESEL", 1);
+
+            // Sub Models under Bulldozer
+            seedVehicleSubModel(bulldozer.getId(), "CAT D6N XL", "CAT_D6N", "Bulldozer Track Type", "Caterpillar", "Bulldozer", "166 HP", "Track Type", "DIESEL", 1);
+
+            // Ensure Admin UI sidebar Menu exists for Vehicle Masters
+            Menu vehicleMenu = updateOrCreateMenu("Vehicles", "vehicles", null, "/vehicles", "truck-icon", 3);
+            updateOrCreateMenu("Vehicle Masters", "vehicle_masters", vehicleMenu, "/vehicles/masters", "layers-icon", 1);
+
+            log.info("Vehicle master seed data initialized successfully.");
+        } catch (Exception e) {
+            log.error("Error seeding vehicle masters: {}", e.getMessage(), e);
+        }
+    }
+
+    private VehicleType seedVehicleType(String name, String code, String desc, String iconUrl, int order) {
+        return vehicleTypeRepository.findByCodeIgnoreCase(code).orElseGet(() -> {
+            VehicleType vt = VehicleType.builder()
+                    .name(name)
+                    .code(code)
+                    .description(desc)
+                    .iconUrl(iconUrl)
+                    .displayOrder(order)
+                    .active(true)
+                    .build();
+            return vehicleTypeRepository.save(vt);
+        });
+    }
+
+    private VehicleModel seedVehicleModel(Long typeId, String name, String code, String desc, int order) {
+        return vehicleModelRepository.findByVehicleTypeIdAndCodeIgnoreCase(typeId, code).orElseGet(() -> {
+            VehicleModel vm = VehicleModel.builder()
+                    .vehicleTypeId(typeId)
+                    .name(name)
+                    .code(code)
+                    .description(desc)
+                    .displayOrder(order)
+                    .active(true)
+                    .build();
+            return vehicleModelRepository.save(vm);
+        });
+    }
+
+    private VehicleSubModel seedVehicleSubModel(Long modelId, String name, String code, String desc, String mfg, String mClass, String hp, String cap, String fuel, int order) {
+        return vehicleSubModelRepository.findByVehicleModelIdAndCodeIgnoreCase(modelId, code).orElseGet(() -> {
+            VehicleSubModel vsm = VehicleSubModel.builder()
+                    .vehicleModelId(modelId)
+                    .name(name)
+                    .code(code)
+                    .description(desc)
+                    .manufacturer(mfg)
+                    .machineClass(mClass)
+                    .horsePower(hp)
+                    .capacity(cap)
+                    .fuelType(fuel)
+                    .displayOrder(order)
+                    .active(true)
+                    .build();
+            return vehicleSubModelRepository.save(vsm);
+        });
+    }
 }
+
