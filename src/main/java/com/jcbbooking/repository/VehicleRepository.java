@@ -16,6 +16,11 @@ public interface VehicleRepository extends JpaRepository<Vehicle, Long> {
 
     List<Vehicle> findByUserId(Long userId);
 
+    @Query("SELECT v FROM Vehicle v WHERE " +
+           "(:userId IS NOT NULL AND v.userId = :userId) OR " +
+           "(:driverId IS NOT NULL AND v.driverId = :driverId)")
+    List<Vehicle> findByUserIdOrDriverId(@Param("userId") Long userId, @Param("driverId") Long driverId);
+
     List<Vehicle> findByDriverIdAndIsActiveTrueAndStatus(Long driverId, String status);
 
     List<Vehicle> findByUserIdAndIsActiveTrueAndStatus(Long userId, String status);

@@ -15,6 +15,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import com.jcbbooking.websocket.WebSocketNotificationService;
+import java.util.HashMap;
+import java.util.Map;
+
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -26,6 +30,8 @@ public class VehicleServiceImpl implements VehicleService {
     private final VehicleSubModelRepository vehicleSubModelRepository;
     private final DriverRepository driverRepository;
     private final VehicleMasterService vehicleMasterService;
+    private final UserNotificationRepository userNotificationRepository;
+    private final WebSocketNotificationService webSocketNotificationService;
 
     @Override
     @Transactional
@@ -139,18 +145,37 @@ public class VehicleServiceImpl implements VehicleService {
         Driver driver = driverRepository.findByUserId(authenticatedUserId).orElse(null);
         Long driverId = driver != null ? driver.getId() : null;
 
-        List<Vehicle> list = vehicleRepository.findByUserId(authenticatedUserId);
-        if (list.isEmpty() && driverId != null) {
-            list = vehicleRepository.findByDriverId(driverId);
-        }
-        return list.stream().map(this::mapToVehicleResponse).collect(Collectors.toList());
+        List<Vehicle> list = vehicleRepository.findByUserIdOrDriverId(authenticatedUserId, driverId);
+        return mapAndDeduplicate(list);
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<VehicleResponse> getVehiclesByDriverId(Long driverId) {
-        return vehicleRepository.findByDriverId(driverId).stream()
-                .map(this::mapToVehicleResponse).collect(Collectors.toList());
+        if (driverId == null) return List.of();
+        Driver driver = driverRepository.findById(driverId).orElse(null);
+        Long userId = driver != null ? driver.getUserId() : null;
+        List<Vehicle> list = vehicleRepository.findByUserIdOrDriverId(userId, driverId);
+        return mapAndDeduplicate(list);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<VehicleResponse> getVehiclesByUserId(Long userId) {
+        if (userId == null) return List.of();
+        Driver driver = driverRepository.findByUserId(userId).orElse(null);
+        Long driverId = driver != null ? driver.getId() : null;
+        List<Vehicle> list = vehicleRepository.findByUserIdOrDriverId(userId, driverId);
+        return mapAndDeduplicate(list);
+    }
+
+    private List<VehicleResponse> mapAndDeduplicate(List<Vehicle> list) {
+        if (list == null || list.isEmpty()) return List.of();
+        return list.stream()
+                .collect(Collectors.toMap(Vehicle::getId, v -> v, (v1, v2) -> v1))
+                .values().stream()
+                .map(this::mapToVehicleResponse)
+                .collect(Collectors.toList());
     }
 
     @Override
@@ -180,6 +205,12 @@ public class VehicleServiceImpl implements VehicleService {
         vehicle.setRejectionReason(null);
         Vehicle saved = vehicleRepository.save(vehicle);
 
+        sendVehicleStatusNotification(
+                saved,
+                "Vehicle Verification Approved!",
+                "Your vehicle registration (" + saved.getRegNumber() + " - " + (saved.getVehicleName() != null ? saved.getVehicleName() : "Equipment") + ") has been approved by Admin!"
+        );
+
         return mapToVehicleResponse(saved);
     }
 
@@ -195,7 +226,93 @@ public class VehicleServiceImpl implements VehicleService {
         vehicle.setRejectionReason(reason);
         Vehicle saved = vehicleRepository.save(vehicle);
 
+        sendVehicleStatusNotification(
+                saved,
+                "Vehicle Verification Rejected",
+                "Your vehicle registration (" + saved.getRegNumber() + ") was rejected. Reason: " + reason
+        );
+
         return mapToVehicleResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    public VehicleResponse activateVehicle(Long id, Long authenticatedUserId) {
+        log.info("Activating vehicle ID: {} for user ID: {}", id, authenticatedUserId);
+        Vehicle targetVehicle = vehicleRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Vehicle not found with ID: " + id));
+
+        Long driverId = targetVehicle.getDriverId();
+        Long userId = targetVehicle.getUserId() != null ? targetVehicle.getUserId() : authenticatedUserId;
+
+        List<Vehicle> userVehicles = List.of();
+        if (driverId != null) {
+            userVehicles = vehicleRepository.findByDriverId(driverId);
+        } else if (userId != null) {
+            userVehicles = vehicleRepository.findByUserId(userId);
+        }
+
+        for (Vehicle v : userVehicles) {
+            if (v.getId().equals(id)) {
+                v.setIsActive(true);
+                v.setStatus("Active");
+            } else {
+                v.setIsActive(false);
+            }
+        }
+        if (!userVehicles.isEmpty()) {
+            vehicleRepository.saveAll(userVehicles);
+        }
+
+        targetVehicle.setIsActive(true);
+        targetVehicle.setStatus("Active");
+        Vehicle saved = vehicleRepository.save(targetVehicle);
+
+        if (driverId != null) {
+            Driver driver = driverRepository.findById(driverId).orElse(null);
+            if (driver != null) {
+                driver.setSelectedVehicleType(saved.getCategory());
+                driver.setSelectedMachineryModel(saved.getMachineryModel() != null ? saved.getMachineryModel() : saved.getVehicleName());
+                driverRepository.save(driver);
+            }
+        }
+
+        return mapToVehicleResponse(saved);
+    }
+
+    private void sendVehicleStatusNotification(Vehicle vehicle, String title, String message) {
+        Long targetUserId = vehicle.getUserId();
+        if (targetUserId == null && vehicle.getDriverId() != null) {
+            Driver driver = driverRepository.findById(vehicle.getDriverId()).orElse(null);
+            if (driver != null) {
+                targetUserId = driver.getUserId();
+            }
+        }
+        if (targetUserId == null) {
+            log.warn("Cannot send vehicle notification: No target userId found for vehicle ID {}", vehicle.getId());
+            return;
+        }
+
+        UserNotification notification = UserNotification.builder()
+                .userId(targetUserId)
+                .targetType("INDIVIDUAL_USER")
+                .notificationType("VEHICLE")
+                .title(title)
+                .message(message)
+                .deepLink("/profile")
+                .isRead(false)
+                .build();
+        userNotificationRepository.save(notification);
+
+        Map<String, Object> wsPayload = new HashMap<>();
+        wsPayload.put("type", "INBOX_NOTIFICATION");
+        wsPayload.put("title", title);
+        wsPayload.put("message", message);
+        wsPayload.put("notificationType", "VEHICLE");
+        wsPayload.put("deepLink", "/profile");
+        webSocketNotificationService.sendBookingOfferToUser(targetUserId, wsPayload);
+
+        log.info("Successfully dispatched vehicle notification to userId {}: {}", targetUserId, title);
     }
 
     private VehicleResponse mapToVehicleResponse(Vehicle v) {

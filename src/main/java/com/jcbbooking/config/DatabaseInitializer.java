@@ -520,9 +520,10 @@ public class DatabaseInitializer implements CommandLineRunner {
             // Sub Models under Bulldozer
             seedVehicleSubModel(bulldozer.getId(), "CAT D6N XL", "CAT_D6N", "Bulldozer Track Type", "Caterpillar", "Bulldozer", "166 HP", "Track Type", "DIESEL", 1);
 
-            // Ensure Admin UI sidebar Menu exists for Vehicle Masters
+            // Ensure Admin UI sidebar Menu exists for Vehicles & Vehicle Master
             Menu vehicleMenu = updateOrCreateMenu("Vehicles", "vehicles", null, "/vehicles", "truck-icon", 3);
-            updateOrCreateMenu("Vehicle Masters", "vehicle_masters", vehicleMenu, "/vehicles/masters", "layers-icon", 1);
+            updateOrCreateMenu("Vehicles", "vehicles_list", vehicleMenu, "/vehicles", "truck-icon", 1);
+            updateOrCreateMenu("Vehicle Master", "vehicle_masters", vehicleMenu, "/vehicles/masters", "layers-icon", 2);
 
             log.info("Vehicle master seed data initialized successfully.");
         } catch (Exception e) {

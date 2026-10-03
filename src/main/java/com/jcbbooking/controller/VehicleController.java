@@ -55,6 +55,13 @@ public class VehicleController {
         return ResponseEntity.ok(ApiResponse.success("Vehicles retrieved successfully", vehicles));
     }
 
+    @GetMapping("/user/{userId}")
+    public ResponseEntity<ApiResponse<List<VehicleResponse>>> getVehiclesByUserId(@PathVariable Long userId) {
+        log.info("REST request to get vehicles for user ID: {}", userId);
+        List<VehicleResponse> vehicles = vehicleService.getVehiclesByUserId(userId);
+        return ResponseEntity.ok(ApiResponse.success("Vehicles retrieved successfully", vehicles));
+    }
+
     @GetMapping
     public ResponseEntity<ApiResponse<List<VehicleResponse>>> getAllVehiclesForAdmin() {
         log.info("REST request for all vehicles (Admin)");
@@ -69,19 +76,37 @@ public class VehicleController {
         return ResponseEntity.ok(ApiResponse.success("Vehicle retrieved successfully", vehicle));
     }
 
-    @PostMapping("/{id}/approve")
+    @RequestMapping(value = "/{id}/approve", method = {RequestMethod.PUT, RequestMethod.POST})
     public ResponseEntity<ApiResponse<VehicleResponse>> approveVehicle(@PathVariable Long id) {
         log.info("Admin request to approve vehicle ID: {}", id);
         VehicleResponse vehicle = vehicleService.approveVehicle(id);
         return ResponseEntity.ok(ApiResponse.success("Vehicle approved successfully", vehicle));
     }
 
-    @PostMapping("/{id}/reject")
+    @RequestMapping(value = "/{id}/reject", method = {RequestMethod.PUT, RequestMethod.POST})
     public ResponseEntity<ApiResponse<VehicleResponse>> rejectVehicle(
             @PathVariable Long id,
-            @RequestParam(required = false, defaultValue = "Documents unverified") String reason) {
-        log.info("Admin request to reject vehicle ID: {} with reason: {}", id, reason);
-        VehicleResponse vehicle = vehicleService.rejectVehicle(id, reason);
+            @RequestBody(required = false) java.util.Map<String, String> body,
+            @RequestParam(required = false) String reason) {
+        String finalReason = reason;
+        if (body != null && body.containsKey("reason") && body.get("reason") != null && !body.get("reason").trim().isEmpty()) {
+            finalReason = body.get("reason").trim();
+        }
+        if (finalReason == null || finalReason.trim().isEmpty()) {
+            finalReason = "Documents unverified";
+        }
+        log.info("Admin request to reject vehicle ID: {} with reason: {}", id, finalReason);
+        VehicleResponse vehicle = vehicleService.rejectVehicle(id, finalReason);
         return ResponseEntity.ok(ApiResponse.success("Vehicle rejected successfully", vehicle));
+    }
+
+    @RequestMapping(value = "/{id}/activate", method = {RequestMethod.PUT, RequestMethod.POST})
+    public ResponseEntity<ApiResponse<VehicleResponse>> activateVehicle(
+            @PathVariable Long id,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+        log.info("Request to activate vehicle ID: {}", id);
+        Long userId = userDetails != null ? userDetails.getId() : null;
+        VehicleResponse vehicle = vehicleService.activateVehicle(id, userId);
+        return ResponseEntity.ok(ApiResponse.success("Vehicle activated successfully for bookings", vehicle));
     }
 }

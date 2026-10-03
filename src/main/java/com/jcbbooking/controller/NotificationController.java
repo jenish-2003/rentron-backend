@@ -157,4 +157,45 @@ public class NotificationController {
 
         return ResponseEntity.ok(ApiResponse.success("Notification dispatched to " + targetUsers.size() + " users"));
     }
+
+    @PostMapping("/notify-admin")
+    @Transactional
+    public ResponseEntity<ApiResponse<Void>> notifyAdmin(
+            @RequestBody Map<String, Object> payload) {
+
+        String title = (String) payload.getOrDefault("title", "Admin Notification");
+        String message = (String) payload.getOrDefault("message", "");
+        String notificationType = (String) payload.getOrDefault("notificationType", "VEHICLE");
+        String deepLink = (String) payload.get("deepLink");
+
+        List<User> adminUsers = userRepository.findAllByRole(Role.ADMIN);
+        if (adminUsers.isEmpty()) {
+            log.info("No admin users found to notify");
+            return ResponseEntity.ok(ApiResponse.success("No admin users found to notify"));
+        }
+
+        for (User admin : adminUsers) {
+            UserNotification notification = UserNotification.builder()
+                    .userId(admin.getId())
+                    .targetType("ADMIN")
+                    .notificationType(notificationType)
+                    .title(title)
+                    .message(message)
+                    .deepLink(deepLink)
+                    .isRead(false)
+                    .build();
+            userNotificationRepository.save(notification);
+
+            Map<String, Object> wsPayload = new HashMap<>();
+            wsPayload.put("type", "ADMIN_NOTIFICATION");
+            wsPayload.put("title", title);
+            wsPayload.put("message", message);
+            wsPayload.put("notificationType", notificationType);
+            wsPayload.put("deepLink", deepLink);
+            webSocketNotificationService.sendBookingOfferToUser(admin.getId(), wsPayload);
+        }
+
+        log.info("Successfully notified {} admin user(s): {}", adminUsers.size(), title);
+        return ResponseEntity.ok(ApiResponse.success("Admin notified successfully"));
+    }
 }
