@@ -38,6 +38,15 @@ public class VehicleController {
         return ResponseEntity.ok(response);
     }
 
+    @GetMapping("/driver/{driverId}")
+    public ResponseEntity<Map<String, Object>> getVehiclesByDriverId(@PathVariable Long driverId) {
+        List<Vehicle> list = vehicleService.getVehiclesByDriverId(driverId);
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("data", list);
+        return ResponseEntity.ok(response);
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<Map<String, Object>> getVehicleById(@PathVariable Long id) {
         Vehicle vehicle = vehicleService.getVehicleById(id)
@@ -68,7 +77,7 @@ public class VehicleController {
         return ResponseEntity.ok(response);
     }
 
-    @PutMapping("/{id}/approve")
+    @RequestMapping(value = "/{id}/approve", method = {RequestMethod.PUT, RequestMethod.POST})
     public ResponseEntity<Map<String, Object>> approveVehicle(@PathVariable Long id) {
         Vehicle approved = vehicleService.approveVehicle(id);
         Map<String, Object> response = new HashMap<>();
@@ -78,9 +87,17 @@ public class VehicleController {
         return ResponseEntity.ok(response);
     }
 
-    @PutMapping("/{id}/reject")
-    public ResponseEntity<Map<String, Object>> rejectVehicle(@PathVariable Long id, @RequestBody Map<String, String> body) {
-        String reason = body != null ? body.getOrDefault("reason", "Documents incomplete or invalid") : "Documents incomplete or invalid";
+    @RequestMapping(value = "/{id}/reject", method = {RequestMethod.PUT, RequestMethod.POST})
+    public ResponseEntity<Map<String, Object>> rejectVehicle(
+            @PathVariable Long id,
+            @RequestBody(required = false) Map<String, String> body,
+            @RequestParam(required = false) String reasonParam) {
+        String reason = "Documents incomplete or invalid";
+        if (body != null && body.containsKey("reason") && body.get("reason") != null && !body.get("reason").trim().isEmpty()) {
+            reason = body.get("reason").trim();
+        } else if (reasonParam != null && !reasonParam.trim().isEmpty()) {
+            reason = reasonParam.trim();
+        }
         Vehicle rejected = vehicleService.rejectVehicle(id, reason);
         Map<String, Object> response = new HashMap<>();
         response.put("success", true);
@@ -89,8 +106,10 @@ public class VehicleController {
         return ResponseEntity.ok(response);
     }
 
-    @PutMapping("/{id}/activate")
-    public ResponseEntity<Map<String, Object>> activateVehicle(@PathVariable Long id, @RequestParam(required = false, defaultValue = "1") Long userId) {
+    @RequestMapping(value = "/{id}/activate", method = {RequestMethod.PUT, RequestMethod.POST})
+    public ResponseEntity<Map<String, Object>> activateVehicle(
+            @PathVariable Long id,
+            @RequestParam(required = false) Long userId) {
         Vehicle activated = vehicleService.activateVehicle(id, userId);
         Map<String, Object> response = new HashMap<>();
         response.put("success", true);

@@ -61,6 +61,9 @@ public class SecurityConfig {
                                 "/api/v1/documents/entity/**",
                                 "/api/v1/documents/download/**",
                                 "/api/v1/settings/**",
+                                "/api/v1/vehicles/**",
+                                "/api/v1/admin/vehicle-masters/**",
+                                "/api/v1/notifications/notify-admin",
                                 "/uploads/**"
                         ).permitAll()
                         .anyRequest().authenticated()

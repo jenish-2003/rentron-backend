@@ -24,6 +24,7 @@ public class VehicleService {
     private final VehicleRepository vehicleRepository;
     private final UserNotificationRepository userNotificationRepository;
     private final WebSocketNotificationService webSocketNotificationService;
+    private final com.jcbbooking.repository.DriverRepository driverRepository;
 
     public List<Vehicle> getAllVehicles() {
         return vehicleRepository.findAllByOrderByCreatedAtDesc();
@@ -157,14 +158,41 @@ public class VehicleService {
 
     @Transactional
     public Vehicle activateVehicle(Long id, Long userId) {
-        List<Vehicle> userVehicles = vehicleRepository.findByUserIdOrderByCreatedAtDesc(userId);
-        for (Vehicle v : userVehicles) {
-            v.setIsActive(v.getId().equals(id));
-            if (v.getId().equals(id) && "Approved".equalsIgnoreCase(v.getStatus())) {
-                v.setStatus("ACTIVE");
-            }
-            vehicleRepository.save(v);
+        Vehicle target = vehicleRepository.findById(id).orElse(null);
+        List<Vehicle> userVehicles = List.of();
+        if (target != null && target.getDriverId() != null) {
+            userVehicles = vehicleRepository.findByDriverIdOrderByCreatedAtDesc(target.getDriverId());
         }
-        return vehicleRepository.findById(id).orElse(null);
+        if ((userVehicles == null || userVehicles.isEmpty()) && userId != null) {
+            userVehicles = vehicleRepository.findByUserIdOrderByCreatedAtDesc(userId);
+        }
+
+        if (userVehicles != null) {
+            for (Vehicle v : userVehicles) {
+                boolean isMatch = v.getId().equals(id);
+                v.setIsActive(isMatch);
+                if (isMatch) {
+                    v.setStatus("Active");
+                }
+                vehicleRepository.save(v);
+            }
+        }
+
+        if (target != null) {
+            target.setIsActive(true);
+            target.setStatus("Active");
+            target = vehicleRepository.save(target);
+
+            Long driverId = target.getDriverId();
+            if (driverId != null) {
+                com.jcbbooking.model.Driver driver = driverRepository.findById(driverId).orElse(null);
+                if (driver != null) {
+                    driver.setSelectedVehicleType(target.getCategory());
+                    driver.setSelectedMachineryModel(target.getMachineryModel() != null ? target.getMachineryModel() : target.getVehicleName());
+                    driverRepository.save(driver);
+                }
+            }
+        }
+        return target;
     }
 }

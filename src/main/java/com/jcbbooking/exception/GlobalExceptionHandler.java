@@ -36,8 +36,21 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.success("Validation failed", errors));
     }
 
+    @ExceptionHandler({
+            org.apache.catalina.connector.ClientAbortException.class,
+            org.springframework.web.context.request.async.AsyncRequestNotUsableException.class
+    })
+    public void handleClientAbortException(Exception ex) {
+        log.debug("Client closed connection early: {}", ex.getMessage());
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleGeneralException(Exception ex) {
+        if (ex.getCause() instanceof org.apache.catalina.connector.ClientAbortException ||
+            ex.getMessage() != null && ex.getMessage().contains("aborted by the software in your host machine")) {
+            log.debug("Client connection aborted: {}", ex.getMessage());
+            return null;
+        }
         log.error("Unhandled exception caught", ex);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(ApiResponse.error("An unexpected error occurred: " + ex.getMessage()));
