@@ -86,6 +86,17 @@ public class VehicleService {
         if (updatedDetails.getRcFrontUrl() != null) existing.setRcFrontUrl(updatedDetails.getRcFrontUrl());
         if (updatedDetails.getRcBackUrl() != null) existing.setRcBackUrl(updatedDetails.getRcBackUrl());
         if (updatedDetails.getInsuranceUrl() != null) existing.setInsuranceUrl(updatedDetails.getInsuranceUrl());
+        if (updatedDetails.getFrontPhotoUrl() != null) existing.setFrontPhotoUrl(updatedDetails.getFrontPhotoUrl());
+        if (updatedDetails.getSidePhotoUrl() != null) existing.setSidePhotoUrl(updatedDetails.getSidePhotoUrl());
+        if (updatedDetails.getRearPhotoUrl() != null) existing.setRearPhotoUrl(updatedDetails.getRearPhotoUrl());
+        if (updatedDetails.getCabinPhotoUrl() != null) existing.setCabinPhotoUrl(updatedDetails.getCabinPhotoUrl());
+        if (updatedDetails.getEnginePlatePhotoUrl() != null) existing.setEnginePlatePhotoUrl(updatedDetails.getEnginePlatePhotoUrl());
+        if (updatedDetails.getStatus() != null) existing.setStatus(updatedDetails.getStatus());
+        if (updatedDetails.getRejectionReason() != null) {
+            existing.setRejectionReason(updatedDetails.getRejectionReason().trim().isEmpty() ? null : updatedDetails.getRejectionReason());
+        } else if ("UNDER_REVIEW".equalsIgnoreCase(updatedDetails.getStatus()) || "PENDING_VERIFICATION".equalsIgnoreCase(updatedDetails.getStatus())) {
+            existing.setRejectionReason(null);
+        }
 
         return vehicleRepository.save(existing);
     }
