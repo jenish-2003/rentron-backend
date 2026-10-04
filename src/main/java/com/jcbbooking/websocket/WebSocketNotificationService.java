@@ -66,4 +66,14 @@ public class WebSocketNotificationService {
             log.error("Failed to send WebSocket admin alert: {}", e.getMessage());
         }
     }
+
+    public void sendOperatorInvitationToDriver(String phone, Map<String, Object> invitationPayload) {
+        log.info("Sending STOMP operator invitation to driver phone {}", phone);
+        try {
+            messagingTemplate.convertAndSend("/topic/driver-invitations/" + phone, (Object) invitationPayload);
+            messagingTemplate.convertAndSend("/topic/booking-offers/" + phone, (Object) invitationPayload);
+        } catch (Exception e) {
+            log.error("Failed to send WebSocket operator invitation to phone {}: {}", phone, e.getMessage());
+        }
+    }
 }

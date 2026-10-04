@@ -15,6 +15,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import com.jcbbooking.websocket.WebSocketNotificationService;
+
 @RestController
 @RequestMapping("/api/v1/vehicles")
 @RequiredArgsConstructor
@@ -24,6 +26,7 @@ public class VehicleController {
 
     private final VehicleService vehicleService;
     private final DriverRepository driverRepository;
+    private final WebSocketNotificationService webSocketNotificationService;
 
     @GetMapping("/me")
     public ResponseEntity<Map<String, Object>> getMyVehicles(@AuthenticationPrincipal CustomUserDetails userDetails) {
@@ -145,6 +148,39 @@ public class VehicleController {
         response.put("success", true);
         response.put("message", "Vehicle activated successfully");
         response.put("data", activated);
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/{id}/invite-operator")
+    public ResponseEntity<Map<String, Object>> inviteOperator(
+            @PathVariable Long id,
+            @RequestBody Map<String, Object> body) {
+        String phone = body != null && body.containsKey("phone") ? String.valueOf(body.get("phone")).trim() : "";
+        if (phone.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("success", false, "message", "Phone number is required"));
+        }
+
+        Vehicle vehicle = vehicleService.getVehicleById(id).orElse(null);
+        String vehicleName = vehicle != null ? vehicle.getVehicleName() : "JCB Equipment";
+        String regNum = vehicle != null ? vehicle.getRegNumber() : "";
+
+        Map<String, Object> wsPayload = new HashMap<>();
+        wsPayload.put("type", "OPERATOR_INVITATION");
+        wsPayload.put("vehicleId", id);
+        wsPayload.put("vehicleName", vehicleName);
+        wsPayload.put("regNumber", regNum);
+        wsPayload.put("phone", phone);
+        wsPayload.put("message", "You have been invited to operate vehicle: " + vehicleName + " (" + regNum + ")");
+        wsPayload.put("timestamp", System.currentTimeMillis());
+
+        webSocketNotificationService.sendOperatorInvitationToDriver(phone, wsPayload);
+
+        log.info("Sent WebSocket operator invitation for vehicle {} to phone {}", id, phone);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("message", "WebSocket & Push Notification invitation sent successfully to " + phone);
+        response.put("data", wsPayload);
         return ResponseEntity.ok(response);
     }
 }
