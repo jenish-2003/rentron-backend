@@ -29,6 +29,7 @@ public class BookingAssignmentService {
     private final BookingAssignmentRepository bookingAssignmentRepository;
     private final ProductAvailabilityStrategyFactory strategyFactory;
     private final WebSocketNotificationService webSocketNotificationService;
+    private final ProductRepository productRepository;
 
     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(4);
 
@@ -237,16 +238,21 @@ public class BookingAssignmentService {
         List<CandidateWrapper> candidates = new ArrayList<>();
         LocalDateTime staleThreshold = LocalDateTime.now().minusSeconds(settings.getMaxLocationAgeSeconds());
 
+        String requestedVehicleType = getRequestedVehicleType(booking != null ? booking.getProductId() : null);
+
         // 1. Search Drivers
         List<Driver> activeDrivers = driverRepository.findAllByStatus("ACTIVE");
         for (Driver d : activeDrivers) {
             if (d.getLatitude() != null && d.getLongitude() != null) {
-                // Location freshness check
-                if (d.getLocationUpdatedAt() == null || d.getLocationUpdatedAt().isAfter(staleThreshold)) {
-                    double dist = HaversineDistanceUtil.calculateDistanceKm(pickupLat, pickupLon, d.getLatitude(), d.getLongitude());
-                    if (dist >= minRadiusKm && dist <= maxRadiusKm) {
-                        if (strategy.isDriverAvailable(d.getId(), booking)) {
-                            candidates.add(new CandidateWrapper("DRIVER", d.getId(), d.getUserId(), dist, d.getRating() != null ? d.getRating() : 4.0));
+                // Vehicle type matching check
+                if (isVehicleTypeMatch(d.getSelectedVehicleType(), requestedVehicleType)) {
+                    // Location freshness check
+                    if (d.getLocationUpdatedAt() == null || d.getLocationUpdatedAt().isAfter(staleThreshold)) {
+                        double dist = HaversineDistanceUtil.calculateDistanceKm(pickupLat, pickupLon, d.getLatitude(), d.getLongitude());
+                        if (dist >= minRadiusKm && dist <= maxRadiusKm) {
+                            if (strategy.isDriverAvailable(d.getId(), booking)) {
+                                candidates.add(new CandidateWrapper("DRIVER", d.getId(), d.getUserId(), dist, d.getRating() != null ? d.getRating() : 4.0));
+                            }
                         }
                     }
                 }
@@ -276,6 +282,38 @@ public class BookingAssignmentService {
         });
 
         return candidates;
+    }
+
+    private String getRequestedVehicleType(Long productId) {
+        if (productId == null) return null;
+        return productRepository.findById(productId)
+                .map(p -> p.getProductType() != null ? p.getProductType() : p.getCategory())
+                .orElse(null);
+    }
+
+    public static boolean isVehicleTypeMatch(String driverVehicleType, String requestedVehicleType) {
+        if (requestedVehicleType == null || requestedVehicleType.trim().isEmpty()) {
+            return true; // Unspecified requested type matches any driver
+        }
+        if (driverVehicleType == null || driverVehicleType.trim().isEmpty()) {
+            return false; // Driver has no active vehicle selected
+        }
+
+        String dType = driverVehicleType.trim().toUpperCase();
+        String rType = requestedVehicleType.trim().toUpperCase();
+
+        if (dType.equals(rType)) return true;
+
+        if (isMachineryGroup(dType) && isMachineryGroup(rType)) return true;
+        if (dType.contains("CAR") && rType.contains("CAR")) return true;
+        if (dType.contains("AUTO") && rType.contains("AUTO")) return true;
+        if (dType.contains("BIKE") && rType.contains("BIKE")) return true;
+
+        return false;
+    }
+
+    private static boolean isMachineryGroup(String type) {
+        return type.contains("MACHINERY") || type.contains("JCB") || type.contains("EQUIPMENT") || type.contains("EXCAVATOR");
     }
 
     private static class CandidateWrapper {

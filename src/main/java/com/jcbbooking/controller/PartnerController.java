@@ -279,6 +279,8 @@ public class PartnerController {
                     if (partner.getFullName() != null) existingApproval.setFullName(partner.getFullName());
                     if (partner.getEmail() != null) existingApproval.setEmail(partner.getEmail());
                     if (partner.getExperience() != null) existingApproval.setExperience(partner.getExperience());
+                    if (partner.getOperationType() != null) existingApproval.setOperationType(partner.getOperationType());
+                    if (partner.getSelectedRole() != null) existingApproval.setSelectedRole(partner.getSelectedRole());
                     existingApproval.setStatus("PENDING_VERIFICATION");
                     partnerApprovalRepository.save(existingApproval);
                 }
@@ -286,6 +288,8 @@ public class PartnerController {
                     if (partner.getFullName() != null) existingDriver.setFullName(partner.getFullName());
                     if (partner.getEmail() != null) existingDriver.setEmail(partner.getEmail());
                     if (partner.getExperience() != null) existingDriver.setExperience(partner.getExperience());
+                    if (partner.getOperationType() != null) existingDriver.setOperationType(partner.getOperationType());
+                    if (partner.getSelectedRole() != null) existingDriver.setSelectedRole(partner.getSelectedRole());
                     existingDriver.setStatus("PENDING_VERIFICATION");
                     driverRepository.save(existingDriver);
                 }
@@ -364,6 +368,8 @@ public class PartnerController {
                     .licenseNumber(partner.getLicenseNumber())
                     .aadhaarNumber(partner.getAadhaarNumber())
                     .experience(partner.getExperience())
+                    .operationType(partner.getOperationType())
+                    .selectedRole(partner.getSelectedRole())
                     .contractorId(partner.getContractorId())
                     .status(partner.getStatus())
                     .rating(partner.getRating())

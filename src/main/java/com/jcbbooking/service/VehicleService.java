@@ -1,5 +1,6 @@
 package com.jcbbooking.service;
 
+import com.jcbbooking.model.Driver;
 import com.jcbbooking.model.UserNotification;
 import com.jcbbooking.model.Vehicle;
 import com.jcbbooking.repository.UserNotificationRepository;
@@ -31,11 +32,27 @@ public class VehicleService {
     }
 
     public List<Vehicle> getVehiclesByUserId(Long userId) {
-        return vehicleRepository.findByUserIdOrderByCreatedAtDesc(userId);
+        List<Vehicle> list = vehicleRepository.findByUserIdOrderByCreatedAtDesc(userId);
+        if (list == null || list.isEmpty()) {
+            Driver d = driverRepository.findByUserId(userId).orElse(null);
+            if (d != null) {
+                Vehicle v = createDefaultVehicleIfNoneExists(userId, d.getId(), d.getSelectedVehicleType(), d.getSelectedMachineryModel());
+                if (v != null) return List.of(v);
+            }
+        }
+        return list;
     }
 
     public List<Vehicle> getVehiclesByDriverId(Long driverId) {
-        return vehicleRepository.findByDriverIdOrderByCreatedAtDesc(driverId);
+        List<Vehicle> list = vehicleRepository.findByDriverIdOrderByCreatedAtDesc(driverId);
+        if (list == null || list.isEmpty()) {
+            Driver d = driverRepository.findById(driverId).orElse(null);
+            if (d != null) {
+                Vehicle v = createDefaultVehicleIfNoneExists(d.getUserId(), driverId, d.getSelectedVehicleType(), d.getSelectedMachineryModel());
+                if (v != null) return List.of(v);
+            }
+        }
+        return list;
     }
 
     public Optional<Vehicle> getVehicleById(Long id) {
@@ -170,12 +187,19 @@ public class VehicleService {
     @Transactional
     public Vehicle activateVehicle(Long id, Long userId) {
         Vehicle target = vehicleRepository.findById(id).orElse(null);
-        List<Vehicle> userVehicles = List.of();
-        if (target != null && target.getDriverId() != null) {
-            userVehicles = vehicleRepository.findByDriverIdOrderByCreatedAtDesc(target.getDriverId());
+        if (target == null) {
+            throw new RuntimeException("Vehicle not found with ID: " + id);
         }
-        if ((userVehicles == null || userVehicles.isEmpty()) && userId != null) {
-            userVehicles = vehicleRepository.findByUserIdOrderByCreatedAtDesc(userId);
+
+        Long driverId = target.getDriverId();
+        Long effectiveUserId = (userId != null) ? userId : target.getUserId();
+
+        List<Vehicle> userVehicles = List.of();
+        if (driverId != null) {
+            userVehicles = vehicleRepository.findByDriverIdOrderByCreatedAtDesc(driverId);
+        }
+        if ((userVehicles == null || userVehicles.isEmpty()) && effectiveUserId != null) {
+            userVehicles = vehicleRepository.findByUserIdOrderByCreatedAtDesc(effectiveUserId);
         }
 
         if (userVehicles != null) {
@@ -184,26 +208,69 @@ public class VehicleService {
                 v.setIsActive(isMatch);
                 if (isMatch) {
                     v.setStatus("Active");
+                } else if ("Active".equalsIgnoreCase(v.getStatus())) {
+                    v.setStatus("APPROVED");
                 }
                 vehicleRepository.save(v);
             }
         }
 
-        if (target != null) {
-            target.setIsActive(true);
-            target.setStatus("Active");
-            target = vehicleRepository.save(target);
+        target.setIsActive(true);
+        target.setStatus("Active");
+        target = vehicleRepository.save(target);
 
-            Long driverId = target.getDriverId();
-            if (driverId != null) {
-                com.jcbbooking.model.Driver driver = driverRepository.findById(driverId).orElse(null);
-                if (driver != null) {
-                    driver.setSelectedVehicleType(target.getCategory());
-                    driver.setSelectedMachineryModel(target.getMachineryModel() != null ? target.getMachineryModel() : target.getVehicleName());
-                    driverRepository.save(driver);
-                }
-            }
+        // Update Driver's selectedVehicleType and selectedMachineryModel
+        Driver driver = null;
+        if (driverId != null) {
+            driver = driverRepository.findById(driverId).orElse(null);
         }
+        if (driver == null && effectiveUserId != null) {
+            driver = driverRepository.findByUserId(effectiveUserId).orElse(null);
+        }
+        if (driver != null) {
+            driver.setSelectedVehicleType(target.getCategory());
+            driver.setSelectedMachineryModel(target.getMachineryModel() != null ? target.getMachineryModel() : target.getVehicleName());
+            driverRepository.save(driver);
+            log.info("Activated vehicle ID {} for Driver ID {} with selectedVehicleType: {}", id, driver.getId(), target.getCategory());
+        }
+
         return target;
+    }
+
+    @Transactional
+    public Vehicle createDefaultVehicleIfNoneExists(Long userId, Long driverId, String vehicleType, String machineryModel) {
+        if (userId == null && driverId == null) return null;
+
+        List<Vehicle> existing = vehicleRepository.findByUserIdOrDriverId(userId, driverId);
+        if (existing != null && !existing.isEmpty()) {
+            return existing.get(0);
+        }
+
+        String category = (vehicleType != null && !vehicleType.trim().isEmpty()) ? vehicleType.trim() : "Machinery";
+        String model = (machineryModel != null && !machineryModel.trim().isEmpty()) ? machineryModel.trim() : "JCB 3DX";
+
+        Vehicle defaultVehicle = Vehicle.builder()
+                .userId(userId)
+                .driverId(driverId)
+                .vehicleName(model)
+                .category(category)
+                .machineryModel(model)
+                .machinerySubCategory("")
+                .regNumber("")
+                .mfgYear("")
+                .machineClass("")
+                .chassisVin("")
+                .engineSerial("")
+                .vehicleDescription("")
+                .status("UNDER_REVIEW")
+                .isActive(true)
+                .submittedOn(LocalDateTime.now().toString())
+                .fetchMode("MANUAL")
+                .isVahanSynced(false)
+                .build();
+
+        Vehicle saved = vehicleRepository.save(defaultVehicle);
+        log.info("Created blank vehicle record ID {} ({}) for UserId: {} / DriverId: {}", saved.getId(), model, userId, driverId);
+        return saved;
     }
 }

@@ -70,6 +70,8 @@ public class DriverProfileController {
                         .phone(pa.getPhone())
                         .email(pa.getEmail())
                         .experience(pa.getExperience())
+                        .operationType(pa.getOperationType())
+                        .selectedRole(pa.getSelectedRole())
                         .status(pa.getStatus() != null ? pa.getStatus() : "PENDING_VERIFICATION")
                         .rating(pa.getRating() != null ? pa.getRating() : 4.0)
                         .totalJobs(0)
@@ -96,6 +98,16 @@ public class DriverProfileController {
             log.info("Created draft Driver profile for user ID {}", userDetails.getId());
         }
 
+        if (driver != null) {
+            if (driver.getSelectedRole() == null) {
+                if ("FLEET".equalsIgnoreCase(driver.getOperationType())) {
+                    driver.setSelectedRole("FLEET_OWNER");
+                } else {
+                    driver.setSelectedRole("DRIVER");
+                }
+            }
+        }
+
         return ResponseEntity.ok(ApiResponse.success("Profile retrieved successfully", driver));
     }
 
@@ -120,6 +132,7 @@ public class DriverProfileController {
         if (updateRequest.getAadhaarNumber() != null) existing.setAadhaarNumber(updateRequest.getAadhaarNumber());
         if (updateRequest.getExperience() != null) existing.setExperience(updateRequest.getExperience());
         if (updateRequest.getOperationType() != null) existing.setOperationType(updateRequest.getOperationType());
+        if (updateRequest.getSelectedRole() != null) existing.setSelectedRole(updateRequest.getSelectedRole());
         if (updateRequest.getSelectedVehicleType() != null) existing.setSelectedVehicleType(updateRequest.getSelectedVehicleType());
         if (updateRequest.getSelectedMachineryModel() != null) existing.setSelectedMachineryModel(updateRequest.getSelectedMachineryModel());
         if (updateRequest.getCity() != null) existing.setCity(updateRequest.getCity());
@@ -130,6 +143,15 @@ public class DriverProfileController {
         if (updateRequest.getPreferredLanguage() != null) existing.setPreferredLanguage(updateRequest.getPreferredLanguage());
 
         Driver saved = driverRepository.save(existing);
+
+        // Also sync to PartnerApproval
+        partnerApprovalRepository.findByPhone(existing.getPhone()).ifPresent(pa -> {
+            if (updateRequest.getFullName() != null) pa.setFullName(updateRequest.getFullName());
+            if (updateRequest.getEmail() != null) pa.setEmail(updateRequest.getEmail());
+            if (updateRequest.getOperationType() != null) pa.setOperationType(updateRequest.getOperationType());
+            if (updateRequest.getSelectedRole() != null) pa.setSelectedRole(updateRequest.getSelectedRole());
+            partnerApprovalRepository.save(pa);
+        });
 
         // Also sync name/email on User entity
         userRepository.findById(userDetails.getId()).ifPresent(user -> {

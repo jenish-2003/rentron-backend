@@ -1,10 +1,14 @@
 package com.jcbbooking.controller;
 
+import com.jcbbooking.model.Driver;
 import com.jcbbooking.model.Vehicle;
+import com.jcbbooking.repository.DriverRepository;
+import com.jcbbooking.security.CustomUserDetails;
 import com.jcbbooking.service.VehicleService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -19,6 +23,32 @@ import java.util.Map;
 public class VehicleController {
 
     private final VehicleService vehicleService;
+    private final DriverRepository driverRepository;
+
+    @GetMapping("/me")
+    public ResponseEntity<Map<String, Object>> getMyVehicles(@AuthenticationPrincipal CustomUserDetails userDetails) {
+        log.info("REST request for authenticated driver vehicles: {}", userDetails != null ? userDetails.getId() : "null");
+        if (userDetails == null || userDetails.getUser() == null) {
+            return ResponseEntity.status(401).body(Map.of("success", false, "message", "Unauthorized"));
+        }
+        Long userId = userDetails.getId();
+        Driver driver = driverRepository.findByUserId(userId)
+                .orElseGet(() -> driverRepository.findByPhone(userDetails.getUser().getPhone()).orElse(null));
+        Long driverId = driver != null ? driver.getId() : null;
+
+        List<Vehicle> list = List.of();
+        if (driverId != null) {
+            list = vehicleService.getVehiclesByDriverId(driverId);
+        }
+        if ((list == null || list.isEmpty()) && userId != null) {
+            list = vehicleService.getVehiclesByUserId(userId);
+        }
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("data", list);
+        return ResponseEntity.ok(response);
+    }
 
     @GetMapping
     public ResponseEntity<Map<String, Object>> getAllVehicles() {

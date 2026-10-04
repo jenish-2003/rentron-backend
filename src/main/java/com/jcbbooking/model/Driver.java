@@ -72,6 +72,9 @@ public class Driver {
     @Column(name = "operation_type", length = 50)
     private String operationType; // OWN, RENT_OR_LEASE, FLEET
 
+    @Column(name = "selected_role", length = 50)
+    private String selectedRole; // DRIVER, FLEET_OWNER
+
     @Column(name = "selected_vehicle_type", length = 50)
     private String selectedVehicleType; // CAR, AUTO, BIKE, MACHINERY
 

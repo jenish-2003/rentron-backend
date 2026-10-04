@@ -75,6 +75,12 @@ public class PartnerApproval {
     @Column(name = "bank_upi", length = 100)
     private String bankUpi;
 
+    @Column(name = "operation_type", length = 50)
+    private String operationType; // OWN, RENT_OR_LEASE, FLEET
+
+    @Column(name = "selected_role", length = 50)
+    private String selectedRole; // DRIVER, FLEET_OWNER
+
     @Column(name = "contractor_id")
     private Long contractorId;
 

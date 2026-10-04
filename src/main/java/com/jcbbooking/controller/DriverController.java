@@ -42,6 +42,8 @@ public class DriverController {
     private final ContractorRepository contractorRepository;
     private final DocumentRepository documentRepository;
     private final com.jcbbooking.repository.PartnerApprovalRepository partnerApprovalRepository;
+    private final com.jcbbooking.repository.VehicleRepository vehicleRepository;
+    private final com.jcbbooking.repository.ProductRepository productRepository;
 
     @Value("${core.fileTransfer.primaryUploadFolder:/opt/microservice/upload/images}")
     private String primaryUploadFolder;
@@ -323,5 +325,64 @@ public class DriverController {
         });
         driverRepository.deleteById(id);
         return ResponseEntity.ok(ApiResponse.success("Driver deleted successfully"));
+    }
+
+    @GetMapping("/search-nearby")
+    public ResponseEntity<ApiResponse<java.util.List<java.util.Map<String, Object>>>> searchNearbyDrivers(
+            @org.springframework.web.bind.annotation.RequestParam double latitude,
+            @org.springframework.web.bind.annotation.RequestParam double longitude,
+            @org.springframework.web.bind.annotation.RequestParam(required = false, defaultValue = "10.0") double radiusKm,
+            @org.springframework.web.bind.annotation.RequestParam(required = false) String vehicleType,
+            @org.springframework.web.bind.annotation.RequestParam(required = false) Long productId) {
+
+        log.info("REST request to search nearby drivers lat: {}, lon: {}, radius: {} km, vehicleType: {}, productId: {}",
+                latitude, longitude, radiusKm, vehicleType, productId);
+
+        String effectiveVehicleType = vehicleType;
+        if ((effectiveVehicleType == null || effectiveVehicleType.trim().isEmpty()) && productId != null) {
+            effectiveVehicleType = productRepository.findById(productId)
+                    .map(p -> p.getProductType() != null ? p.getProductType() : p.getCategory())
+                    .orElse(null);
+        }
+
+        List<Driver> activeDrivers = driverRepository.findAllByStatus("ACTIVE");
+        java.util.List<java.util.Map<String, Object>> result = new java.util.ArrayList<>();
+
+        for (Driver d : activeDrivers) {
+            if (d.getLatitude() != null && d.getLongitude() != null) {
+                if (com.jcbbooking.service.BookingAssignmentService.isVehicleTypeMatch(d.getSelectedVehicleType(), effectiveVehicleType)) {
+                    double dist = com.jcbbooking.util.HaversineDistanceUtil.calculateDistanceKm(latitude, longitude, d.getLatitude(), d.getLongitude());
+                    if (dist <= radiusKm) {
+                        java.util.Map<String, Object> item = new java.util.HashMap<>();
+                        item.put("driverId", d.getId());
+                        item.put("userId", d.getUserId());
+                        item.put("fullName", d.getFullName());
+                        item.put("phone", d.getPhone());
+                        item.put("rating", d.getRating() != null ? d.getRating() : 4.8);
+                        item.put("latitude", d.getLatitude());
+                        item.put("longitude", d.getLongitude());
+                        item.put("distanceKm", Math.round(dist * 100.0) / 100.0);
+                        item.put("selectedVehicleType", d.getSelectedVehicleType());
+                        item.put("selectedMachineryModel", d.getSelectedMachineryModel());
+                        item.put("isOnline", d.getIsOnline() != null ? d.getIsOnline() : true);
+
+                        if (d.getId() != null) {
+                            List<com.jcbbooking.model.Vehicle> vList = vehicleRepository.findByDriverIdOrderByCreatedAtDesc(d.getId());
+                            com.jcbbooking.model.Vehicle activeVehicle = vList.stream().filter(v -> Boolean.TRUE.equals(v.getIsActive())).findFirst().orElse(null);
+                            if (activeVehicle != null) {
+                                item.put("activeVehicleId", activeVehicle.getId());
+                                item.put("regNumber", activeVehicle.getRegNumber());
+                                item.put("vehicleName", activeVehicle.getVehicleName());
+                                item.put("category", activeVehicle.getCategory());
+                            }
+                        }
+                        result.add(item);
+                    }
+                }
+            }
+        }
+
+        result.sort((m1, m2) -> Double.compare((Double) m1.get("distanceKm"), (Double) m2.get("distanceKm")));
+        return ResponseEntity.ok(ApiResponse.success("Nearby active drivers retrieved successfully", result));
     }
 }
