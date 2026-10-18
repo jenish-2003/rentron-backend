@@ -26,6 +26,10 @@ public class CustomUserDetails implements UserDetails {
         this.authorities = auths;
     }
 
+    public CustomUserDetails(User user) {
+        this(user, List.of());
+    }
+
     public User getUser() {
         return user;
     }

@@ -65,6 +65,11 @@ public class SecurityConfig {
                                 "/api/v1/vehicle-masters/**",
                                 "/api/v1/admin/vehicle-masters/**",
                                 "/api/v1/notifications/notify-admin",
+                                "/api/v1/bookings/quote",
+                                "/api/v1/pricings/calculate",
+                                "/api/v1/rental-packages/active",
+                                "/ws-rentron/**",
+                                "/ws-rentron-sockjs/**",
                                 "/uploads/**"
                         ).permitAll()
                         .anyRequest().authenticated()

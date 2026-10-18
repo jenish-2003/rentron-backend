@@ -72,6 +72,12 @@ public class PaymentController {
             return ResponseEntity.badRequest().body(ApiResponse.error("Booking not found"));
         }
 
+        // Replay Protection / Idempotency check (Task 9)
+        if ("PAID".equalsIgnoreCase(booking.getPaymentStatus())) {
+            log.info("Payment for booking ID {} already marked as PAID (replay protection)", bookingId);
+            return ResponseEntity.ok(ApiResponse.success("Payment already verified (idempotent)", razorpayPaymentId));
+        }
+
         BookingSetting settings = bookingAssignmentService.getOrInitSettings();
         String secret = settings.getKeySecret();
 
@@ -88,12 +94,18 @@ public class PaymentController {
 
         // Mark payment as PAID & confirm booking
         booking.setPaymentStatus("PAID");
+        if ("SCHEDULED".equalsIgnoreCase(booking.getBookingType())) {
+            booking.setStatus("SCHEDULED");
+            bookingRepository.save(booking);
+            return ResponseEntity.ok(ApiResponse.success("Payment verified successfully for scheduled booking", razorpayPaymentId));
+        }
+
         if ("PENDING".equalsIgnoreCase(booking.getStatus())) {
             booking.setStatus("CONFIRMED");
         }
         bookingRepository.save(booking);
 
-        // Start progressive auto assignment
+        // Start progressive auto assignment for immediate rides
         bookingAssignmentService.startAutoAssignmentProcess(bookingId);
 
         return ResponseEntity.ok(ApiResponse.success("Payment verified successfully and auto-assignment triggered", razorpayPaymentId));

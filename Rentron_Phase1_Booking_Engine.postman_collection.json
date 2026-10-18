@@ -1,0 +1,812 @@
+{
+  "info": {
+    "_postman_id": "rentron-phase1-booking-engine",
+    "name": "Rentron Phase 1 Booking Engine & Dynamic Pricing",
+    "description": "Comprehensive Postman collection for Rentron Phase 1 backend booking engine, authoritative quotations, dynamic rental/outstation pricing, driver allocation, and state transitions.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "customerToken",
+      "value": "eyJhbGciOiJIUzI1NiJ9...",
+      "type": "string"
+    },
+    {
+      "key": "driverToken",
+      "value": "eyJhbGciOiJIUzI1NiJ9...",
+      "type": "string"
+    },
+    {
+      "key": "adminToken",
+      "value": "eyJhbGciOiJIUzI1NiJ9...",
+      "type": "string"
+    },
+    {
+      "key": "bookingId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "productId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "rentalPackageId",
+      "value": "1",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Authentication",
+      "item": [
+        {
+          "name": "Customer Send OTP",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"9876543210\",\n  \"purpose\": \"LOGIN\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/send-otp",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "send-otp"]
+            }
+          }
+        },
+        {
+          "name": "Customer Verify OTP & Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.data && jsonData.data.token) {",
+                  "    pm.collectionVariables.set('customerToken', jsonData.data.token);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"9876543210\",\n  \"otp\": \"1234\",\n  \"role\": \"CUSTOMER\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/verify-otp",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "verify-otp"]
+            }
+          }
+        },
+        {
+          "name": "Driver Password Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.data && jsonData.data.token) {",
+                  "    pm.collectionVariables.set('driverToken', jsonData.data.token);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"8569789450\",\n  \"password\": \"password123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "login"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Server-Authoritative Quotation (Task 4)",
+      "item": [
+        {
+          "name": "Local Ride Quotation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customerToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productId\": {{productId}},\n  \"bookingType\": \"LOCAL_RIDE\",\n  \"pickupLatitude\": 12.9716,\n  \"pickupLongitude\": 77.5946,\n  \"dropLatitude\": 12.9352,\n  \"dropLongitude\": 77.6245,\n  \"pickupAddress\": \"MG Road, Bangalore\",\n  \"destinationAddress\": \"Koramangala, Bangalore\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/bookings/quote",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "bookings", "quote"]
+            }
+          }
+        },
+        {
+          "name": "Scheduled Ride Quotation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customerToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productId\": {{productId}},\n  \"bookingType\": \"SCHEDULED\",\n  \"scheduledPickupAt\": \"2026-10-20T18:00:00\",\n  \"pickupLatitude\": 12.9716,\n  \"pickupLongitude\": 77.5946,\n  \"dropLatitude\": 12.9352,\n  \"dropLongitude\": 77.6245\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/bookings/quote",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "bookings", "quote"]
+            }
+          }
+        },
+        {
+          "name": "Rental Package Quotation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customerToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productId\": {{productId}},\n  \"bookingType\": \"RENTAL\",\n  \"rentalPackageId\": 1,\n  \"rentalPackageName\": \"4 hr 40 km\",\n  \"durationHours\": 4.0,\n  \"distanceKm\": 40.0\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/bookings/quote",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "bookings", "quote"]
+            }
+          }
+        },
+        {
+          "name": "Outstation One-Way Quotation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customerToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productId\": {{productId}},\n  \"bookingType\": \"OUTSTATION\",\n  \"outstationTripType\": \"ONE_WAY\",\n  \"distanceKm\": 85.0,\n  \"scheduledPickupAt\": \"2026-10-21T06:00:00\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/bookings/quote",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "bookings", "quote"]
+            }
+          }
+        },
+        {
+          "name": "Outstation Round-Trip Quotation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customerToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productId\": {{productId}},\n  \"bookingType\": \"OUTSTATION\",\n  \"outstationTripType\": \"ROUND_TRIP\",\n  \"distanceKm\": 160.0,\n  \"scheduledPickupAt\": \"2026-10-21T06:00:00\",\n  \"returnAt\": \"2026-10-23T20:00:00\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/bookings/quote",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "bookings", "quote"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Dynamic Rental Packages (Task 2)",
+      "item": [
+        {
+          "name": "Get Active Rental Packages",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/rental-packages/active",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "rental-packages", "active"]
+            }
+          }
+        },
+        {
+          "name": "Admin List All Packages",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/rental-packages",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "rental-packages"]
+            }
+          }
+        },
+        {
+          "name": "Admin Create Package",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"12 hr 120 km Executive\",\n  \"vehicleCategory\": \"ALL\",\n  \"includedHours\": 12.0,\n  \"includedKm\": 120.0,\n  \"basePackageFare\": 2799.0,\n  \"extraKmPrice\": 12.0,\n  \"extraHourPrice\": 95.0,\n  \"bookingFee\": 20.0,\n  \"taxPercentage\": 5.0,\n  \"active\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/rental-packages",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "rental-packages"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Customer Booking APIs (Tasks 5, 6, 8, 11)",
+      "item": [
+        {
+          "name": "Confirm Local Booking",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.data && jsonData.data.id) {",
+                  "    pm.collectionVariables.set('bookingId', jsonData.data.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customerToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productId\": {{productId}},\n  \"bookingType\": \"LOCAL\",\n  \"paymentMethod\": \"CASH\",\n  \"distanceKm\": 8.5,\n  \"durationHours\": 0.4,\n  \"pickupAddressText\": \"MG Road Metro Station\",\n  \"destinationAddressText\": \"Indiranagar 100ft Road\",\n  \"pickupLatitude\": 12.9756,\n  \"pickupLongitude\": 77.6066,\n  \"dropLatitude\": 12.9784,\n  \"dropLongitude\": 77.6408,\n  \"idempotencyKey\": \"req-uuid-1001\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/bookings/confirm",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "bookings", "confirm"]
+            }
+          }
+        },
+        {
+          "name": "List Customer Bookings",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customerToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/bookings",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "bookings"]
+            }
+          }
+        },
+        {
+          "name": "Get Booking Details",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customerToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/bookings/{{bookingId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "bookings", "{{bookingId}}"]
+            }
+          }
+        },
+        {
+          "name": "Get Allocation Progress",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customerToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/bookings/{{bookingId}}/allocation-progress",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "bookings", "{{bookingId}}", "allocation-progress"]
+            }
+          }
+        },
+        {
+          "name": "Live Tracking",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customerToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/bookings/{{bookingId}}/track",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "bookings", "{{bookingId}}", "track"]
+            }
+          }
+        },
+        {
+          "name": "Add Driver Tip",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customerToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/bookings/{{bookingId}}/tip?amount=50.0",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "bookings", "{{bookingId}}", "tip"],
+              "query": [
+                {
+                  "key": "amount",
+                  "value": "50.0"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Invoice / Receipt",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customerToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/bookings/{{bookingId}}/invoice",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "bookings", "{{bookingId}}", "invoice"]
+            }
+          }
+        },
+        {
+          "name": "Cancel Booking",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customerToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/bookings/{{bookingId}}/cancel?reason=Changed%20mind",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "bookings", "{{bookingId}}", "cancel"],
+              "query": [
+                {
+                  "key": "reason",
+                  "value": "Changed mind"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Driver Status & Operations (Tasks 7 & 10)",
+      "item": [
+        {
+          "name": "Get Driver Pending Offers",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{driverToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/drivers/me/offers",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "drivers", "me", "offers"]
+            }
+          }
+        },
+        {
+          "name": "Driver Accept Offer",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{driverToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/drivers/me/offers/{{bookingId}}/accept",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "drivers", "me", "offers", "{{bookingId}}", "accept"]
+            }
+          }
+        },
+        {
+          "name": "Driver Reject Offer",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{driverToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/drivers/me/offers/{{bookingId}}/reject?reason=Too%20far",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "drivers", "me", "offers", "{{bookingId}}", "reject"],
+              "query": [
+                {
+                  "key": "reason",
+                  "value": "Too far"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Active Job",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{driverToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/drivers/me/active-job",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "drivers", "me", "active-job"]
+            }
+          }
+        },
+        {
+          "name": "Driver Mark Arriving",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{driverToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/drivers/me/bookings/{{bookingId}}/arriving",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "drivers", "me", "bookings", "{{bookingId}}", "arriving"]
+            }
+          }
+        },
+        {
+          "name": "Driver Mark Arrived",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{driverToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/drivers/me/bookings/{{bookingId}}/arrived",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "drivers", "me", "bookings", "{{bookingId}}", "arrived"]
+            }
+          }
+        },
+        {
+          "name": "Driver Verify OTP & Start",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{driverToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/drivers/me/bookings/{{bookingId}}/start?otp=1234",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "drivers", "me", "bookings", "{{bookingId}}", "start"],
+              "query": [
+                {
+                  "key": "otp",
+                  "value": "1234"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Driver Complete Ride",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{driverToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/drivers/me/bookings/{{bookingId}}/complete",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "drivers", "me", "bookings", "{{bookingId}}", "complete"]
+            }
+          }
+        },
+        {
+          "name": "Driver Job History",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{driverToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/drivers/me/job-history",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "drivers", "me", "job-history"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Payment Integration (Task 9)",
+      "item": [
+        {
+          "name": "Create Razorpay Order",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customerToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bookingId\": {{bookingId}}\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/payments/create-order",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "payments", "create-order"]
+            }
+          }
+        },
+        {
+          "name": "Verify Razorpay Signature",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customerToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bookingId\": \"{{bookingId}}\",\n  \"razorpayOrderId\": \"order_rzp_mock_1\",\n  \"razorpayPaymentId\": \"pay_rzp_mock_1\",\n  \"razorpaySignature\": \"mock_signature\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/payments/verify-signature",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "payments", "verify-signature"]
+            }
+          }
+        },
+        {
+          "name": "Admin View Transactions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/payments/admin/transactions",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "payments", "admin", "transactions"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Real-Time WebSockets & Notifications",
+      "item": [
+        {
+          "name": "STOMP WebSocket Connection Endpoint",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customerToken}}",
+                "description": "Passed in STOMP CONNECT frame native headers"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/ws-rentron",
+              "host": ["{{baseUrl}}"],
+              "path": ["ws-rentron"],
+              "description": "Native WebSocket endpoint. Fallback SockJS endpoint: /ws-rentron-sockjs"
+            }
+          }
+        },
+        {
+          "name": "Subscribe to Booking Lifecycle Topic",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/topic/booking/{{bookingId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["topic", "booking", "{{bookingId}}"],
+              "description": "STOMP Destination. Broadcasts BOOKING_CREATED, SEARCHING_DRIVER, DRIVER_ASSIGNED, ARRIVED, RIDE_STARTED, COMPLETED, CANCELLED, NO_DRIVER_AVAILABLE"
+            }
+          }
+        },
+        {
+          "name": "Subscribe to Driver Dispatch Offers Topic",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/topic/booking-offers/{{userId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["topic", "booking-offers", "{{userId}}"],
+              "description": "STOMP Destination for targeted driver ride offers. Also available via user queue: /user/queue/booking-offers"
+            }
+          }
+        },
+        {
+          "name": "Subscribe to Admin Booking Alerts Topic",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/topic/admin/booking-alerts",
+              "host": ["{{baseUrl}}"],
+              "path": ["topic", "admin", "booking-alerts"],
+              "description": "STOMP Destination for unassigned / manual escalation alerts"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

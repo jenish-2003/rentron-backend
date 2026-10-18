@@ -12,4 +12,10 @@ public interface BookingAssignmentRepository extends JpaRepository<BookingAssign
     List<BookingAssignment> findAllByBookingIdOrderByOfferedAtDesc(Long bookingId);
     Optional<BookingAssignment> findByBookingIdAndCandidateTypeAndCandidateIdAndStatus(
             Long bookingId, String candidateType, Long candidateId, String status);
+    List<BookingAssignment> findAllByCandidateTypeAndCandidateIdAndStatusOrderByOfferedAtDesc(
+            String candidateType, Long candidateId, String status);
+    List<BookingAssignment> findAllByBookingIdAndCandidateTypeAndCandidateId(
+            Long bookingId, String candidateType, Long candidateId);
+    Optional<BookingAssignment> findFirstByBookingIdAndCandidateTypeAndCandidateIdAndStatus(
+            Long bookingId, String candidateType, Long candidateId, String status);
 }

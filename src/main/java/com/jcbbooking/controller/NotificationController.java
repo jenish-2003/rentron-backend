@@ -109,18 +109,37 @@ public class NotificationController {
     @PostMapping("/devices/register")
     @Transactional
     public ResponseEntity<ApiResponse<DeviceToken>> registerDeviceToken(
-            @RequestParam String deviceToken,
+            @RequestParam(required = false) String deviceToken,
             @RequestParam(required = false, defaultValue = "ANDROID") String platform,
             @RequestParam(required = false) String deviceId,
+            @RequestBody(required = false) Map<String, String> body,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
 
+        String tokenVal = deviceToken;
+        String platVal = platform;
+        String didVal = deviceId;
+
+        if (body != null) {
+            if (body.containsKey("deviceToken")) tokenVal = body.get("deviceToken");
+            if (body.containsKey("platform")) platVal = body.get("platform");
+            if (body.containsKey("deviceId")) didVal = body.get("deviceId");
+        }
+
+        if (tokenVal == null || tokenVal.trim().isEmpty()) {
+            return ResponseEntity.badRequest().body(ApiResponse.error("deviceToken is required"));
+        }
+
         Long userId = userDetails.getId();
-        DeviceToken token = deviceTokenRepository.findByUserIdAndDeviceToken(userId, deviceToken)
+        final String effectiveToken = tokenVal.trim();
+        final String effectivePlatform = platVal != null ? platVal : "ANDROID";
+        final String effectiveDeviceId = didVal;
+
+        DeviceToken token = deviceTokenRepository.findByUserIdAndDeviceToken(userId, effectiveToken)
                 .orElseGet(() -> DeviceToken.builder()
                         .userId(userId)
-                        .deviceToken(deviceToken)
-                        .platform(platform)
-                        .deviceId(deviceId)
+                        .deviceToken(effectiveToken)
+                        .platform(effectivePlatform)
+                        .deviceId(effectiveDeviceId)
                         .build());
 
         token.setActive(true);

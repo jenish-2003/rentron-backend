@@ -9,6 +9,7 @@ import com.jcbbooking.websocket.WebSocketNotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,9 +28,11 @@ public class BookingAssignmentService {
     private final ContractorRepository contractorRepository;
     private final BookingSettingRepository bookingSettingRepository;
     private final BookingAssignmentRepository bookingAssignmentRepository;
+    private final BookingEventHistoryRepository bookingEventHistoryRepository;
     private final ProductAvailabilityStrategyFactory strategyFactory;
     private final WebSocketNotificationService webSocketNotificationService;
     private final ProductRepository productRepository;
+    private final FcmNotificationService fcmNotificationService;
 
     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(4);
 
@@ -45,6 +48,7 @@ public class BookingAssignmentService {
                             .maxRadiusKm(20.0)
                             .assignmentTimeoutSeconds(30)
                             .maxLocationAgeSeconds(300)
+                            .dispatchLeadTimeMinutes(30)
                             .notifyAdminWhenUnassigned(true)
                             .build();
                     return bookingSettingRepository.save(def);
@@ -67,14 +71,36 @@ public class BookingAssignmentService {
             return;
         }
 
+        // Idempotency: Update status to SEARCHING_DRIVER if currently CONFIRMED or PENDING
+        if ("CONFIRMED".equalsIgnoreCase(booking.getStatus()) || "PENDING".equalsIgnoreCase(booking.getStatus())) {
+            booking.setStatus("SEARCHING_DRIVER");
+            bookingRepository.save(booking);
+
+            recordEventHistory(bookingId, "CONFIRMED", "SEARCHING_DRIVER", booking.getCustomerId(), "CUSTOMER", "Auto-assignment initiated");
+            webSocketNotificationService.sendBookingLifecycleEvent(bookingId, "SEARCHING_DRIVER", Map.of(
+                    "bookingId", bookingId,
+                    "status", "SEARCHING_DRIVER",
+                    "initialRadiusKm", settings.getInitialRadiusKm()
+            ));
+        }
+
         double pickupLat = 0.0;
         double pickupLon = 0.0;
-        if (booking.getPickupAddressId() != null) {
+
+        if (booking.getPickupLatitude() != null && booking.getPickupLongitude() != null) {
+            pickupLat = booking.getPickupLatitude();
+            pickupLon = booking.getPickupLongitude();
+        } else if (booking.getPickupAddressId() != null) {
             Address pickupAddr = addressRepository.findById(booking.getPickupAddressId()).orElse(null);
             if (pickupAddr != null && pickupAddr.getLatitude() != null && pickupAddr.getLongitude() != null) {
                 pickupLat = pickupAddr.getLatitude();
                 pickupLon = pickupAddr.getLongitude();
             }
+        }
+
+        if (pickupLat == 0.0 && pickupLon == 0.0) {
+            log.warn("Cannot dispatch booking ID {} with missing or 0,0 pickup coordinates", bookingId);
+            return;
         }
 
         executeLayerSearch(bookingId, 1, 0.0, settings.getInitialRadiusKm(), pickupLat, pickupLon, settings);
@@ -85,7 +111,8 @@ public class BookingAssignmentService {
 
         Booking booking = bookingRepository.findById(bookingId).orElse(null);
         if (booking == null || "ASSIGNED".equalsIgnoreCase(booking.getStatus()) || "ACCEPTED".equalsIgnoreCase(booking.getStatus())
-                || "CANCELLED".equalsIgnoreCase(booking.getStatus()) || "COMPLETED".equalsIgnoreCase(booking.getStatus())) {
+                || "CANCELLED".equalsIgnoreCase(booking.getStatus()) || "COMPLETED".equalsIgnoreCase(booking.getStatus())
+                || "DRIVER_ON_THE_WAY".equalsIgnoreCase(booking.getStatus()) || "ARRIVED".equalsIgnoreCase(booking.getStatus())) {
             log.info("Booking ID {} is already terminal or assigned ({})", bookingId, booking != null ? booking.getStatus() : "NULL");
             return;
         }
@@ -95,7 +122,7 @@ public class BookingAssignmentService {
 
         ProductAvailabilityStrategy strategy = strategyFactory.getStrategy(booking.getProductId());
 
-        // Find Candidates (Drivers & Contractors)
+        // Find Candidates (Drivers & Contractors) with strict eligibility
         List<CandidateWrapper> candidates = findCandidatesInRadius(booking, pickupLat, pickupLon, minRadiusKm, maxLayerRadiusKm, settings, strategy);
 
         if (!candidates.isEmpty()) {
@@ -122,10 +149,40 @@ public class BookingAssignmentService {
                 offerPayload.put("layerIndex", layerIndex);
                 offerPayload.put("radiusKm", maxLayerRadiusKm);
                 offerPayload.put("distanceKm", cand.distanceKm);
-                offerPayload.put("totalAmount", booking.getTotalAmount());
+                offerPayload.put("totalAmount", booking.getTotalAmount() != null ? booking.getTotalAmount() : booking.getEstimatedFare());
                 offerPayload.put("expiresInSeconds", settings.getAssignmentTimeoutSeconds());
+                offerPayload.put("pickupAddress", booking.getPickupAddressText());
+                offerPayload.put("destinationAddress", booking.getDestinationAddressText());
+                String prodName = "Vehicle";
+                String vType = "STANDARD";
+                if (booking.getProductId() != null) {
+                    Product p = productRepository.findById(booking.getProductId()).orElse(null);
+                    if (p != null) {
+                        prodName = p.getName();
+                        vType = p.getProductType();
+                    }
+                }
+                offerPayload.put("productName", prodName);
+                offerPayload.put("vehicleType", vType);
+                offerPayload.put("bookingType", booking.getBookingType());
+                offerPayload.put("driverAmount", booking.getDriverAmount() != null ? booking.getDriverAmount() : (booking.getTotalAmount() != null ? booking.getTotalAmount() * 0.8 : 0.0));
+                offerPayload.put("estimatedDurationMinutes", booking.getEstimatedDurationMinutes());
+                offerPayload.put("offeredAt", LocalDateTime.now().toString());
 
                 webSocketNotificationService.sendBookingOfferToUser(cand.userId, offerPayload);
+                if (cand.userId != null) {
+                    try {
+                        fcmNotificationService.sendBookingOfferPush(
+                                cand.userId,
+                                bookingId,
+                                booking.getBookingNumber(),
+                                booking.getPickupAddressText(),
+                                booking.getTotalAmount() != null ? booking.getTotalAmount() : booking.getEstimatedFare()
+                        );
+                    } catch (Exception e) {
+                        log.warn("FCM push offer failed for user {}: {}", cand.userId, e.getMessage());
+                    }
+                }
             }
 
             // Schedule timeout before progressing to next layer
@@ -135,7 +192,11 @@ public class BookingAssignmentService {
 
             scheduler.schedule(() -> {
                 Booking freshBooking = bookingRepository.findById(bookingId).orElse(null);
-                if (freshBooking != null && "PENDING".equalsIgnoreCase(freshBooking.getStatus()) || "CONFIRMED".equalsIgnoreCase(freshBooking.getStatus())) {
+                // FIXED precedence bug: grouping with parentheses
+                if (freshBooking != null && ("PENDING".equalsIgnoreCase(freshBooking.getStatus())
+                        || "CONFIRMED".equalsIgnoreCase(freshBooking.getStatus())
+                        || "SEARCHING_DRIVER".equalsIgnoreCase(freshBooking.getStatus()))) {
+
                     if (nextMinRadius < settings.getMaxRadiusKm()) {
                         executeLayerSearch(bookingId, layerIndex + 1, nextMinRadius, Math.min(nextMaxRadius, settings.getMaxRadiusKm()), pickupLat, pickupLon, settings);
                     } else {
@@ -148,6 +209,7 @@ public class BookingAssignmentService {
             log.info("No eligible candidates found in Layer {} for Booking ID {}. Checking next layer...", layerIndex, bookingId);
             double nextMinRadius = maxLayerRadiusKm;
             double nextMaxRadius = maxLayerRadiusKm + settings.getRadiusIncrementKm();
+
             if (nextMinRadius < settings.getMaxRadiusKm()) {
                 executeLayerSearch(bookingId, layerIndex + 1, nextMinRadius, Math.min(nextMaxRadius, settings.getMaxRadiusKm()), pickupLat, pickupLon, settings);
             } else {
@@ -158,58 +220,118 @@ public class BookingAssignmentService {
 
     private void handleAdminFallback(Booking booking, BookingSetting settings) {
         log.warn("All Progressive Auto-Assignment Layers completed for Booking ID {} without acceptance.", booking.getId());
-        if (Boolean.TRUE.equals(settings.getNotifyAdminWhenUnassigned())) {
-            Map<String, Object> alert = new HashMap<>();
-            alert.put("type", "BOOKING_ASSIGNMENT_FAILED");
-            alert.put("bookingId", booking.getId());
-            alert.put("bookingNumber", booking.getBookingNumber());
-            alert.put("message", "No driver or contractor accepted the booking within maximum radius of " + settings.getMaxRadiusKm() + " KM.");
-            alert.put("maxRadiusKm", settings.getMaxRadiusKm());
+        booking.setStatus("NO_DRIVER_AVAILABLE");
+        bookingRepository.save(booking);
 
-            webSocketNotificationService.sendAdminAssignmentFailedNotification(alert);
-        }
+        recordEventHistory(booking.getId(), "SEARCHING_DRIVER", "NO_DRIVER_AVAILABLE", null, "SYSTEM", "No driver available in maximum radius");
+
+        Map<String, Object> alert = new HashMap<>();
+        alert.put("bookingId", booking.getId());
+        alert.put("bookingNumber", booking.getBookingNumber());
+        alert.put("message", "No driver or contractor accepted the booking within maximum radius of " + settings.getMaxRadiusKm() + " KM.");
+        alert.put("maxRadiusKm", settings.getMaxRadiusKm());
+
+        webSocketNotificationService.sendAdminAssignmentFailedNotification(alert);
+        webSocketNotificationService.sendBookingLifecycleEvent(booking.getId(), "NO_DRIVER_AVAILABLE", alert);
     }
 
     /**
-     * Atomic Acceptance Concurrency Control: First candidate to execute gets the assignment.
+     * Concurrency-safe atomic driver acceptance.
      */
     @Transactional
     public boolean acceptBookingOffer(Long bookingId, String candidateType, Long candidateId, Long userId) {
+        log.info("Candidate {} ID {} accepting booking offer for booking ID {}", candidateType, candidateId, bookingId);
+
         Booking booking = bookingRepository.findById(bookingId).orElse(null);
         if (booking == null) {
             throw new IllegalArgumentException("Booking not found");
         }
 
-        if (!"PENDING".equalsIgnoreCase(booking.getStatus()) && !"CONFIRMED".equalsIgnoreCase(booking.getStatus())) {
-            log.warn("Acceptance rejected for candidate {} (ID {}). Booking ID {} status is {}", candidateType, candidateId, bookingId, booking.getStatus());
+        // Verify active offer existence
+        Optional<BookingAssignment> myAssignmentOpt = bookingAssignmentRepository
+                .findFirstByBookingIdAndCandidateTypeAndCandidateIdAndStatus(bookingId, candidateType, candidateId, "OFFERED");
+
+        if (myAssignmentOpt.isEmpty()) {
+            log.warn("Acceptance rejected: no active OFFERED record for candidate {} ID {} on booking {}", candidateType, candidateId, bookingId);
             return false;
         }
 
-        // Perform Atomic State Update
-        if ("DRIVER".equalsIgnoreCase(candidateType)) {
-            booking.setDriverId(candidateId);
-            Driver driver = driverRepository.findById(candidateId).orElse(null);
-            if (driver != null && driver.getContractorId() != null) {
-                booking.setContractorId(driver.getContractorId());
-            }
-        } else if ("CONTRACTOR".equalsIgnoreCase(candidateType)) {
-            booking.setContractorId(candidateId);
-        }
+        BookingAssignment myAssignment = myAssignmentOpt.get();
+        BookingSetting settings = getOrInitSettings();
 
-        booking.setStatus("ASSIGNED");
-        bookingRepository.save(booking);
-
-        // Update Audit Assignment Log
-        Optional<BookingAssignment> myAssignmentOpt = bookingAssignmentRepository
-                .findByBookingIdAndCandidateTypeAndCandidateIdAndStatus(bookingId, candidateType, candidateId, "OFFERED");
-        if (myAssignmentOpt.isPresent()) {
-            BookingAssignment myAssignment = myAssignmentOpt.get();
-            myAssignment.setStatus("ACCEPTED");
+        // Check if offer expired based on timeout
+        if (myAssignment.getOfferedAt() != null &&
+                myAssignment.getOfferedAt().plusSeconds(settings.getAssignmentTimeoutSeconds() + 10).isBefore(LocalDateTime.now())) {
+            log.warn("Acceptance rejected: offer has timed out for candidate {} ID {} on booking {}", candidateType, candidateId, bookingId);
+            myAssignment.setStatus("EXPIRED");
             myAssignment.setRespondedAt(LocalDateTime.now());
             bookingAssignmentRepository.save(myAssignment);
+            return false;
         }
 
-        // Broadcast offer closure to all remaining candidate subscribers
+        // Validate candidate ownership if caller userId is provided
+        if (userId != null) {
+            if ("DRIVER".equalsIgnoreCase(candidateType)) {
+                Driver drv = driverRepository.findById(candidateId).orElse(null);
+                if (drv != null && drv.getUserId() != null && !drv.getUserId().equals(userId)) {
+                    log.warn("Acceptance rejected: Authenticated user {} does not own driver {}", userId, candidateId);
+                    return false;
+                }
+            } else if ("CONTRACTOR".equalsIgnoreCase(candidateType)) {
+                Contractor con = contractorRepository.findById(candidateId).orElse(null);
+                if (con != null && con.getUserId() != null && !con.getUserId().equals(userId)) {
+                    log.warn("Acceptance rejected: Authenticated user {} does not own contractor {}", userId, candidateId);
+                    return false;
+                }
+            }
+        }
+
+        // Determine driver & contractor IDs
+        Long targetDriverId = "DRIVER".equalsIgnoreCase(candidateType) ? candidateId : null;
+        Long targetContractorId = "CONTRACTOR".equalsIgnoreCase(candidateType) ? candidateId : null;
+        if (targetDriverId != null) {
+            Driver driver = driverRepository.findById(targetDriverId).orElse(null);
+            if (driver != null && driver.getContractorId() != null) {
+                targetContractorId = driver.getContractorId();
+            }
+        }
+
+        // Prevent one driver from accepting overlapping active bookings
+        if (targetDriverId != null) {
+            List<String> activeDriverStatuses = List.of("ASSIGNED", "ACCEPTED", "DRIVER_ON_THE_WAY", "ARRIVED", "STARTED", "IN_PROGRESS");
+            if (bookingRepository.existsByDriverIdAndStatusIn(targetDriverId, activeDriverStatuses)) {
+                log.warn("Acceptance rejected: Driver {} already has an active overlapping booking", targetDriverId);
+                myAssignment.setStatus("REJECTED");
+                myAssignment.setRejectionReason("DRIVER_BUSY_WITH_ANOTHER_BOOKING");
+                myAssignment.setRespondedAt(LocalDateTime.now());
+                bookingAssignmentRepository.save(myAssignment);
+                return false;
+            }
+        }
+
+        // Perform Concurrency-Safe Atomic Conditional Database Update
+        List<String> acceptableStatuses = List.of("PENDING", "CONFIRMED", "SEARCHING_DRIVER");
+        int updated = bookingRepository.assignDriverAtomically(
+                bookingId, targetDriverId, targetContractorId, "ASSIGNED", acceptableStatuses
+        );
+
+        if (updated == 0) {
+            log.warn("Atomic conditional update failed for booking ID {} - already assigned or invalid status", bookingId);
+            myAssignment.setStatus("EXPIRED");
+            myAssignment.setRespondedAt(LocalDateTime.now());
+            bookingAssignmentRepository.save(myAssignment);
+            return false;
+        }
+
+        // Mark candidate's offer as ACCEPTED
+        myAssignment.setStatus("ACCEPTED");
+        myAssignment.setRespondedAt(LocalDateTime.now());
+        bookingAssignmentRepository.save(myAssignment);
+
+        // Record Audit Event
+        recordEventHistory(bookingId, booking.getStatus(), "ASSIGNED", userId, candidateType, "Offer accepted by " + candidateType);
+
+        // Invalidate remaining offers & notify candidates
         List<BookingAssignment> allAssignments = bookingAssignmentRepository.findAllByBookingIdOrderByOfferedAtDesc(bookingId);
         for (BookingAssignment ba : allAssignments) {
             if ("OFFERED".equalsIgnoreCase(ba.getStatus())) {
@@ -223,35 +345,119 @@ public class BookingAssignmentService {
                     cancelMsg.put("bookingId", bookingId);
                     cancelMsg.put("message", "This booking has already been assigned to another candidate.");
                     webSocketNotificationService.sendOfferCancelledToUser(ba.getCandidateUserId(), cancelMsg);
+                    try {
+                        fcmNotificationService.sendBookingCancelledPush(ba.getCandidateUserId(), bookingId, booking.getBookingNumber(), "This booking has been assigned to another driver.");
+                    } catch (Exception ignored) {}
                 }
             }
+        }
+
+        // Notify Customer & Observers via WebSocket
+        Map<String, Object> assignedPayload = new HashMap<>();
+        assignedPayload.put("bookingId", bookingId);
+        assignedPayload.put("status", "ASSIGNED");
+        assignedPayload.put("driverId", targetDriverId);
+        assignedPayload.put("contractorId", targetContractorId);
+        webSocketNotificationService.sendBookingLifecycleEvent(bookingId, "DRIVER_ASSIGNED", assignedPayload);
+
+        if (userId != null) {
+            try {
+                fcmNotificationService.sendBookingAssignedPush(userId, bookingId, booking.getBookingNumber());
+            } catch (Exception ignored) {}
         }
 
         log.info("Booking ID {} successfully ASSIGNED to {} ID {}", bookingId, candidateType, candidateId);
         return true;
     }
 
+    /**
+     * Driver or Contractor rejects an offer.
+     */
+    @Transactional
+    public boolean rejectBookingOffer(Long bookingId, String candidateType, Long candidateId, Long userId, String reason) {
+        log.info("Candidate {} ID {} rejecting offer for booking ID {}", candidateType, candidateId, bookingId);
+
+        Optional<BookingAssignment> myAssignmentOpt = bookingAssignmentRepository
+                .findFirstByBookingIdAndCandidateTypeAndCandidateIdAndStatus(bookingId, candidateType, candidateId, "OFFERED");
+
+        if (myAssignmentOpt.isPresent()) {
+            BookingAssignment assignment = myAssignmentOpt.get();
+            assignment.setStatus("REJECTED");
+            assignment.setRejectionReason(reason != null ? reason : "Declined by driver");
+            assignment.setRespondedAt(LocalDateTime.now());
+            bookingAssignmentRepository.save(assignment);
+
+            recordEventHistory(bookingId, "SEARCHING_DRIVER", "OFFER_REJECTED", userId, candidateType, "Offer rejected: " + reason);
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Periodic background durable scheduler for scheduled bookings (Task 8).
+     * Runs every 60 seconds to scan and dispatch scheduled rides when lead time is reached.
+     */
+    @Scheduled(fixedDelay = 60000)
+    @Transactional
+    public void scanAndDispatchScheduledBookings() {
+        BookingSetting settings = getOrInitSettings();
+        int leadTimeMinutes = settings.getDispatchLeadTimeMinutes() != null ? settings.getDispatchLeadTimeMinutes() : 30;
+        LocalDateTime threshold = LocalDateTime.now().plusMinutes(leadTimeMinutes);
+
+        List<Booking> scheduledToDispatch = bookingRepository.findAllByStatusAndScheduledPickupAtLessThanEqual("SCHEDULED", threshold);
+        if (!scheduledToDispatch.isEmpty()) {
+            log.info("Found {} scheduled bookings ready for dispatch (lead time: {} mins)", scheduledToDispatch.size(), leadTimeMinutes);
+            for (Booking b : scheduledToDispatch) {
+                // Multi-Instance Concurrency Safety: Atomic conditional update
+                int transitioned = bookingRepository.transitionStatusIfMatches(b.getId(), "CONFIRMED", "SCHEDULED");
+                if (transitioned > 0) {
+                    recordEventHistory(b.getId(), "SCHEDULED", "CONFIRMED", null, "SYSTEM", "Scheduled pickup lead time reached");
+                    startAutoAssignmentProcess(b.getId());
+                } else {
+                    log.info("Scheduled booking ID {} was already claimed by another instance", b.getId());
+                }
+            }
+        }
+    }
+
     private List<CandidateWrapper> findCandidatesInRadius(Booking booking, double pickupLat, double pickupLon,
-                                                         double minRadiusKm, double maxRadiusKm, BookingSetting settings,
-                                                         ProductAvailabilityStrategy strategy) {
+                                                          double minRadiusKm, double maxRadiusKm, BookingSetting settings,
+                                                          ProductAvailabilityStrategy strategy) {
 
         List<CandidateWrapper> candidates = new ArrayList<>();
         LocalDateTime staleThreshold = LocalDateTime.now().minusSeconds(settings.getMaxLocationAgeSeconds());
 
         String requestedVehicleType = getRequestedVehicleType(booking != null ? booking.getProductId() : null);
 
-        // 1. Search Drivers
+        // 1. Search Drivers with Full Eligibility Verification
         List<Driver> activeDrivers = driverRepository.findAllByStatus("ACTIVE");
         for (Driver d : activeDrivers) {
+            // Must have valid coordinates
             if (d.getLatitude() != null && d.getLongitude() != null) {
-                // Vehicle type matching check
-                if (isVehicleTypeMatch(d.getSelectedVehicleType(), requestedVehicleType)) {
-                    // Location freshness check
-                    if (d.getLocationUpdatedAt() == null || d.getLocationUpdatedAt().isAfter(staleThreshold)) {
-                        double dist = HaversineDistanceUtil.calculateDistanceKm(pickupLat, pickupLon, d.getLatitude(), d.getLongitude());
-                        if (dist >= minRadiusKm && dist <= maxRadiusKm) {
-                            if (strategy.isDriverAvailable(d.getId(), booking)) {
-                                candidates.add(new CandidateWrapper("DRIVER", d.getId(), d.getUserId(), dist, d.getRating() != null ? d.getRating() : 4.0));
+                // Must be online
+                if (Boolean.TRUE.equals(d.getIsOnline()) || "ACTIVE".equalsIgnoreCase(d.getStatus())) {
+                    // Vehicle type matching
+                    if (isVehicleTypeMatch(d.getSelectedVehicleType(), requestedVehicleType)) {
+                        // Location freshness
+                        if (d.getLocationUpdatedAt() == null || d.getLocationUpdatedAt().isAfter(staleThreshold)) {
+                            // Check conflicting active booking
+                            boolean hasActiveRide = bookingRepository.existsByDriverIdAndStatusIn(
+                                    d.getId(), List.of("ASSIGNED", "DRIVER_ON_THE_WAY", "ARRIVED", "STARTED", "IN_PROGRESS")
+                            );
+                            if (!hasActiveRide) {
+                                // Check if already rejected in this dispatch round
+                                List<BookingAssignment> priorOffers = bookingAssignmentRepository.findAllByBookingIdAndCandidateTypeAndCandidateId(booking.getId(), "DRIVER", d.getId());
+                                boolean alreadyRejected = priorOffers.stream().anyMatch(po -> "REJECTED".equalsIgnoreCase(po.getStatus()));
+
+                                if (!alreadyRejected) {
+                                    double dist = HaversineDistanceUtil.calculateDistanceKm(pickupLat, pickupLon, d.getLatitude(), d.getLongitude());
+                                    if (dist >= minRadiusKm && dist <= maxRadiusKm) {
+                                        if (strategy.isDriverAvailable(d.getId(), booking)) {
+                                            candidates.add(new CandidateWrapper("DRIVER", d.getId(), d.getUserId(), dist, d.getRating() != null ? d.getRating() : 4.0));
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -264,10 +470,15 @@ public class BookingAssignmentService {
         for (Contractor c : activeContractors) {
             if (c.getLatitude() != null && c.getLongitude() != null) {
                 if (c.getLocationUpdatedAt() == null || c.getLocationUpdatedAt().isAfter(staleThreshold)) {
-                    double dist = HaversineDistanceUtil.calculateDistanceKm(pickupLat, pickupLon, c.getLatitude(), c.getLongitude());
-                    if (dist >= minRadiusKm && dist <= maxRadiusKm) {
-                        if (strategy.isContractorAvailable(c.getId(), booking)) {
-                            candidates.add(new CandidateWrapper("CONTRACTOR", c.getId(), c.getUserId(), dist, c.getRating() != null ? c.getRating() : 4.0));
+                    List<BookingAssignment> prior = bookingAssignmentRepository.findAllByBookingIdAndCandidateTypeAndCandidateId(booking.getId(), "CONTRACTOR", c.getId());
+                    boolean alreadyRejected = prior.stream().anyMatch(p -> "REJECTED".equalsIgnoreCase(p.getStatus()));
+
+                    if (!alreadyRejected) {
+                        double dist = HaversineDistanceUtil.calculateDistanceKm(pickupLat, pickupLon, c.getLatitude(), c.getLongitude());
+                        if (dist >= minRadiusKm && dist <= maxRadiusKm) {
+                            if (strategy.isContractorAvailable(c.getId(), booking)) {
+                                candidates.add(new CandidateWrapper("CONTRACTOR", c.getId(), c.getUserId(), dist, c.getRating() != null ? c.getRating() : 4.0));
+                            }
                         }
                     }
                 }
@@ -293,10 +504,10 @@ public class BookingAssignmentService {
 
     public static boolean isVehicleTypeMatch(String driverVehicleType, String requestedVehicleType) {
         if (requestedVehicleType == null || requestedVehicleType.trim().isEmpty()) {
-            return true; // Unspecified requested type matches any driver
+            return true;
         }
         if (driverVehicleType == null || driverVehicleType.trim().isEmpty()) {
-            return false; // Driver has no active vehicle selected
+            return false;
         }
 
         String dType = driverVehicleType.trim().toUpperCase();
@@ -314,6 +525,21 @@ public class BookingAssignmentService {
 
     private static boolean isMachineryGroup(String type) {
         return type.contains("MACHINERY") || type.contains("JCB") || type.contains("EQUIPMENT") || type.contains("EXCAVATOR");
+    }
+
+    private void recordEventHistory(Long bookingId, String fromStatus, String toStatus, Long actorUserId, String actorRole, String reason) {
+        try {
+            bookingEventHistoryRepository.save(BookingEventHistory.builder()
+                    .bookingId(bookingId)
+                    .fromStatus(fromStatus)
+                    .toStatus(toStatus)
+                    .actorUserId(actorUserId)
+                    .actorRole(actorRole)
+                    .reason(reason)
+                    .build());
+        } catch (Exception e) {
+            log.error("Failed to record booking event history for booking {}: {}", bookingId, e.getMessage());
+        }
     }
 
     private static class CandidateWrapper {

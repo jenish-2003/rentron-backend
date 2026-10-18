@@ -40,6 +40,98 @@ public class Booking {
     @Column(name = "destination_address_id")
     private Long destinationAddressId;
 
+    @Builder.Default
+    @Column(name = "booking_type", length = 50)
+    private String bookingType = "LOCAL"; // LOCAL, SCHEDULED, RENTAL, OUTSTATION, HEAVY_EQUIPMENT
+
+    @Column(name = "rental_package", length = 50)
+    private String rentalPackage; // e.g. "1 hr 10 km", "4 hr 40 km"
+
+    @Column(name = "rental_package_id")
+    private Long rentalPackageId;
+
+    @Column(name = "outstation_trip_type", length = 30)
+    private String outstationTripType; // ONE_WAY, ROUND_TRIP
+
+    @Column(name = "scheduled_pickup_at")
+    private LocalDateTime scheduledPickupAt;
+
+    @Column(name = "return_at")
+    private LocalDateTime returnAt;
+
+    @Column(name = "return_date", length = 30)
+    private String returnDate;
+
+    @Column(name = "return_time", length = 30)
+    private String returnTime;
+
+    @Column(name = "pickup_address_text", length = 500)
+    private String pickupAddressText;
+
+    @Column(name = "destination_address_text", length = 500)
+    private String destinationAddressText;
+
+    @Column(name = "pickup_latitude")
+    private Double pickupLatitude;
+
+    @Column(name = "pickup_longitude")
+    private Double pickupLongitude;
+
+    @Column(name = "drop_latitude")
+    private Double dropLatitude;
+
+    @Column(name = "drop_longitude")
+    private Double dropLongitude;
+
+    @Builder.Default
+    @Column(name = "payment_method", length = 50)
+    private String paymentMethod = "CASH"; // CASH, ONLINE, WALLET
+
+    @Builder.Default
+    @Column(name = "driver_tip", columnDefinition = "DECIMAL(12,2) DEFAULT 0.00")
+    private Double driverTip = 0.0;
+
+    @Column(name = "otp", length = 10)
+    private String otp;
+
+    @Column(name = "ride_start_otp_hash", length = 128)
+    private String rideStartOtpHash;
+
+    @Column(name = "otp_generated_at")
+    private LocalDateTime otpGeneratedAt;
+
+    @Column(name = "otp_expires_at")
+    private LocalDateTime otpExpiresAt;
+
+    @Builder.Default
+    @Column(name = "otp_attempts")
+    private Integer otpAttempts = 0;
+
+    @Builder.Default
+    @Column(name = "otp_max_attempts")
+    private Integer otpMaxAttempts = 5;
+
+    @Column(name = "otp_verified_at")
+    private LocalDateTime otpVerifiedAt;
+
+    @Column(name = "driver_arrived_at")
+    private LocalDateTime driverArrivedAt;
+
+    @Column(name = "ride_started_at")
+    private LocalDateTime rideStartedAt;
+
+    @Column(name = "ride_completed_at")
+    private LocalDateTime rideCompletedAt;
+
+    @Column(name = "cancellation_reason", length = 500)
+    private String cancellationReason;
+
+    @Column(name = "idempotency_key", length = 100)
+    private String idempotencyKey;
+
+    @Column(name = "worksite_photo_url", length = 500)
+    private String worksitePhotoUrl;
+
     @Column(name = "booking_date", length = 30)
     private String bookingDate;
 
@@ -51,48 +143,67 @@ public class Booking {
     private Double distanceKm = 0.0;
 
     @Builder.Default
+    @Column(name = "estimated_distance_km")
+    private Double estimatedDistanceKm = 0.0;
+
+    @Builder.Default
     @Column(name = "duration_hours")
     private Double durationHours = 0.0;
 
+    @Builder.Default
+    @Column(name = "estimated_duration_minutes")
+    private Double estimatedDurationMinutes = 0.0;
+
+    @Builder.Default
+    @Column(name = "estimated_fare", columnDefinition = "DECIMAL(12,2) DEFAULT 0.00")
+    private Double estimatedFare = 0.0;
+
+    @Builder.Default
+    @Column(name = "final_fare", columnDefinition = "DECIMAL(12,2) DEFAULT 0.00")
+    private Double finalFare = 0.0;
+
+    @Column(name = "fare_breakdown_snapshot", columnDefinition = "LONGTEXT")
+    private String fareBreakdownSnapshot;
+
     // --- Frozen Price Snapshot Fields ---
     @Builder.Default
-    @Column(name = "base_amount")
+    @Column(name = "base_amount", columnDefinition = "DECIMAL(12,2) DEFAULT 0.00")
     private Double baseAmount = 0.0;
 
     @Builder.Default
-    @Column(name = "distance_amount")
+    @Column(name = "distance_amount", columnDefinition = "DECIMAL(12,2) DEFAULT 0.00")
     private Double distanceAmount = 0.0;
 
     @Builder.Default
-    @Column(name = "time_amount")
+    @Column(name = "time_amount", columnDefinition = "DECIMAL(12,2) DEFAULT 0.00")
     private Double timeAmount = 0.0;
 
     @Builder.Default
-    @Column(name = "waiting_amount")
+    @Column(name = "waiting_amount", columnDefinition = "DECIMAL(12,2) DEFAULT 0.00")
     private Double waitingAmount = 0.0;
 
     @Builder.Default
-    @Column(name = "driver_amount")
+    @Column(name = "driver_amount", columnDefinition = "DECIMAL(12,2) DEFAULT 0.00")
     private Double driverAmount = 0.0;
 
     @Builder.Default
-    @Column(name = "operator_amount")
+    @Column(name = "operator_amount", columnDefinition = "DECIMAL(12,2) DEFAULT 0.00")
     private Double operatorAmount = 0.0;
 
     @Builder.Default
-    @Column(name = "booking_fee")
+    @Column(name = "booking_fee", columnDefinition = "DECIMAL(12,2) DEFAULT 0.00")
     private Double bookingFee = 0.0;
 
     @Builder.Default
-    @Column(name = "discount_amount")
+    @Column(name = "discount_amount", columnDefinition = "DECIMAL(12,2) DEFAULT 0.00")
     private Double discountAmount = 0.0;
 
     @Builder.Default
-    @Column(name = "tax_amount")
+    @Column(name = "tax_amount", columnDefinition = "DECIMAL(12,2) DEFAULT 0.00")
     private Double taxAmount = 0.0;
 
     @Builder.Default
-    @Column(name = "total_amount")
+    @Column(name = "total_amount", columnDefinition = "DECIMAL(12,2) DEFAULT 0.00")
     private Double totalAmount = 0.0;
 
     @Builder.Default

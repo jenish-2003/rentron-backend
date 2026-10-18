@@ -5,7 +5,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -14,16 +17,64 @@ public class WebSocketNotificationService {
 
     private final SimpMessagingTemplate messagingTemplate;
 
+    public void sendBookingLifecycleEvent(Long bookingId, String eventType, Map<String, Object> payload) {
+        log.info("Publishing STOMP lifecycle event '{}' for booking ID {}", eventType, bookingId);
+        try {
+            Map<String, Object> event = new HashMap<>();
+            event.put("eventId", "EVT-" + UUID.randomUUID().toString());
+            event.put("bookingId", bookingId);
+            event.put("eventType", eventType);
+            event.put("timestamp", LocalDateTime.now().toString());
+            event.put("version", "1.0");
+            event.put("payload", payload != null ? payload : Map.of());
+
+            // Destination 1: Topic dedicated to this specific booking ID
+            messagingTemplate.convertAndSend("/topic/booking/" + bookingId, (Object) event);
+
+            // Destination 2: General bookings topic for live tracking observers
+            messagingTemplate.convertAndSend("/topic/bookings/events", (Object) event);
+        } catch (Exception e) {
+            log.error("Failed to publish STOMP booking lifecycle event {}: {}", eventType, e.getMessage());
+        }
+    }
+
+    public void sendBookingEventToUser(Long userId, String eventType, Map<String, Object> payload) {
+        log.info("Sending STOMP event '{}' to user ID {}", eventType, userId);
+        try {
+            Map<String, Object> event = new HashMap<>();
+            event.put("eventId", "EVT-" + UUID.randomUUID().toString());
+            event.put("eventType", eventType);
+            event.put("timestamp", LocalDateTime.now().toString());
+            event.put("version", "1.0");
+            event.put("payload", payload != null ? payload : Map.of());
+
+            messagingTemplate.convertAndSendToUser(
+                    String.valueOf(userId),
+                    "/queue/booking-events",
+                    (Object) event
+            );
+            messagingTemplate.convertAndSend("/topic/user-events/" + userId, (Object) event);
+        } catch (Exception e) {
+            log.error("Failed to send STOMP event to user {}: {}", userId, e.getMessage());
+        }
+    }
+
     public void sendBookingOfferToUser(Long userId, Map<String, Object> offerPayload) {
         log.info("Sending STOMP booking offer to user ID {}", userId);
         try {
+            Map<String, Object> event = new HashMap<>();
+            event.put("eventId", "EVT-" + UUID.randomUUID().toString());
+            event.put("eventType", "DRIVER_OFFER");
+            event.put("timestamp", LocalDateTime.now().toString());
+            event.put("version", "1.0");
+            event.put("payload", offerPayload);
+
             messagingTemplate.convertAndSendToUser(
                     String.valueOf(userId),
                     "/queue/booking-offers",
-                    (Object) offerPayload
+                    (Object) event
             );
-            // Also send on general topic for active listeners
-            messagingTemplate.convertAndSend("/topic/booking-offers/" + userId, (Object) offerPayload);
+            messagingTemplate.convertAndSend("/topic/booking-offers/" + userId, (Object) event);
         } catch (Exception e) {
             log.error("Failed to send WebSocket booking offer to user {}: {}", userId, e.getMessage());
         }
@@ -32,12 +83,19 @@ public class WebSocketNotificationService {
     public void sendOfferCancelledToUser(Long userId, Map<String, Object> cancelPayload) {
         log.info("Sending STOMP offer cancellation to user ID {}", userId);
         try {
+            Map<String, Object> event = new HashMap<>();
+            event.put("eventId", "EVT-" + UUID.randomUUID().toString());
+            event.put("eventType", "OFFER_EXPIRED");
+            event.put("timestamp", LocalDateTime.now().toString());
+            event.put("version", "1.0");
+            event.put("payload", cancelPayload);
+
             messagingTemplate.convertAndSendToUser(
                     String.valueOf(userId),
                     "/queue/booking-offers",
-                    (Object) cancelPayload
+                    (Object) event
             );
-            messagingTemplate.convertAndSend("/topic/booking-offers/" + userId, (Object) cancelPayload);
+            messagingTemplate.convertAndSend("/topic/booking-offers/" + userId, (Object) event);
         } catch (Exception e) {
             log.error("Failed to send WebSocket offer cancellation to user {}: {}", userId, e.getMessage());
         }
@@ -61,7 +119,14 @@ public class WebSocketNotificationService {
     public void sendAdminAssignmentFailedNotification(Map<String, Object> adminPayload) {
         log.warn("Sending STOMP admin notification for failed booking assignment");
         try {
-            messagingTemplate.convertAndSend("/topic/admin/booking-alerts", (Object) adminPayload);
+            Map<String, Object> event = new HashMap<>();
+            event.put("eventId", "EVT-" + UUID.randomUUID().toString());
+            event.put("eventType", "NO_DRIVER_AVAILABLE");
+            event.put("timestamp", LocalDateTime.now().toString());
+            event.put("version", "1.0");
+            event.put("payload", adminPayload);
+
+            messagingTemplate.convertAndSend("/topic/admin/booking-alerts", (Object) event);
         } catch (Exception e) {
             log.error("Failed to send WebSocket admin alert: {}", e.getMessage());
         }

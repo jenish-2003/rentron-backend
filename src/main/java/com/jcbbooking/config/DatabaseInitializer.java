@@ -30,6 +30,7 @@ public class DatabaseInitializer implements CommandLineRunner {
     private final ContractorRepository contractorRepository;
     private final ProductRepository productRepository;
     private final VehicleRepository vehicleRepository;
+    private final RentalPackageRepository rentalPackageRepository;
 
     @Override
     @Transactional
@@ -64,6 +65,40 @@ public class DatabaseInitializer implements CommandLineRunner {
             log.warn("Auto-alter vehicles columns to LONGTEXT note: {}", e.getMessage());
         }
 
+        try {
+            entityManager.createNativeQuery("ALTER TABLE bookings MODIFY COLUMN estimated_fare DECIMAL(12,2) DEFAULT 0.00").executeUpdate();
+            entityManager.createNativeQuery("ALTER TABLE bookings MODIFY COLUMN final_fare DECIMAL(12,2) DEFAULT 0.00").executeUpdate();
+            entityManager.createNativeQuery("ALTER TABLE bookings MODIFY COLUMN total_amount DECIMAL(12,2) DEFAULT 0.00").executeUpdate();
+            entityManager.createNativeQuery("ALTER TABLE bookings MODIFY COLUMN base_amount DECIMAL(12,2) DEFAULT 0.00").executeUpdate();
+            entityManager.createNativeQuery("ALTER TABLE bookings MODIFY COLUMN distance_amount DECIMAL(12,2) DEFAULT 0.00").executeUpdate();
+            entityManager.createNativeQuery("ALTER TABLE bookings MODIFY COLUMN time_amount DECIMAL(12,2) DEFAULT 0.00").executeUpdate();
+            entityManager.createNativeQuery("ALTER TABLE bookings MODIFY COLUMN waiting_amount DECIMAL(12,2) DEFAULT 0.00").executeUpdate();
+            entityManager.createNativeQuery("ALTER TABLE bookings MODIFY COLUMN driver_amount DECIMAL(12,2) DEFAULT 0.00").executeUpdate();
+            entityManager.createNativeQuery("ALTER TABLE bookings MODIFY COLUMN operator_amount DECIMAL(12,2) DEFAULT 0.00").executeUpdate();
+            entityManager.createNativeQuery("ALTER TABLE bookings MODIFY COLUMN booking_fee DECIMAL(12,2) DEFAULT 0.00").executeUpdate();
+            entityManager.createNativeQuery("ALTER TABLE bookings MODIFY COLUMN discount_amount DECIMAL(12,2) DEFAULT 0.00").executeUpdate();
+            entityManager.createNativeQuery("ALTER TABLE bookings MODIFY COLUMN tax_amount DECIMAL(12,2) DEFAULT 0.00").executeUpdate();
+            entityManager.createNativeQuery("ALTER TABLE bookings MODIFY COLUMN driver_tip DECIMAL(12,2) DEFAULT 0.00").executeUpdate();
+
+            entityManager.createNativeQuery("ALTER TABLE pricings MODIFY COLUMN base_price DECIMAL(12,2) DEFAULT 0.00").executeUpdate();
+            entityManager.createNativeQuery("ALTER TABLE pricings MODIFY COLUMN per_km_price DECIMAL(12,2) DEFAULT 0.00").executeUpdate();
+            entityManager.createNativeQuery("ALTER TABLE pricings MODIFY COLUMN per_minute_price DECIMAL(12,2) DEFAULT 0.00").executeUpdate();
+            entityManager.createNativeQuery("ALTER TABLE pricings MODIFY COLUMN per_hour_price DECIMAL(12,2) DEFAULT 0.00").executeUpdate();
+            entityManager.createNativeQuery("ALTER TABLE pricings MODIFY COLUMN daily_rate DECIMAL(12,2) DEFAULT 0.00").executeUpdate();
+            entityManager.createNativeQuery("ALTER TABLE pricings MODIFY COLUMN extra_hour_rate DECIMAL(12,2) DEFAULT 0.00").executeUpdate();
+            entityManager.createNativeQuery("ALTER TABLE pricings MODIFY COLUMN discount DECIMAL(12,2) DEFAULT 0.00").executeUpdate();
+            entityManager.createNativeQuery("ALTER TABLE pricings MODIFY COLUMN minimum_fare DECIMAL(12,2) DEFAULT 0.00").executeUpdate();
+            entityManager.createNativeQuery("ALTER TABLE pricings MODIFY COLUMN waiting_charge DECIMAL(12,2) DEFAULT 0.00").executeUpdate();
+            entityManager.createNativeQuery("ALTER TABLE pricings MODIFY COLUMN driver_charge DECIMAL(12,2) DEFAULT 0.00").executeUpdate();
+            entityManager.createNativeQuery("ALTER TABLE pricings MODIFY COLUMN operator_charge DECIMAL(12,2) DEFAULT 0.00").executeUpdate();
+            entityManager.createNativeQuery("ALTER TABLE pricings MODIFY COLUMN booking_fee DECIMAL(12,2) DEFAULT 0.00").executeUpdate();
+            entityManager.createNativeQuery("ALTER TABLE pricings MODIFY COLUMN cancellation_fee DECIMAL(12,2) DEFAULT 0.00").executeUpdate();
+            entityManager.createNativeQuery("ALTER TABLE pricings MODIFY COLUMN night_allowance DECIMAL(12,2) DEFAULT 300.00").executeUpdate();
+            log.info("Successfully verified and adjusted monetary column precision to DECIMAL(12,2)");
+        } catch (Exception e) {
+            log.warn("Monetary column precision adjustment note: {}", e.getMessage());
+        }
+
         if (userRepository.count() == 0) {
             log.info("Database is empty. Commencing system seeding...");
             initializeData();
@@ -84,6 +119,67 @@ public class DatabaseInitializer implements CommandLineRunner {
             if (migratedCount > 0) {
                 log.info("Successfully migrated {} legacy passwords to secure BCrypt hashes!", migratedCount);
             }
+        }
+
+        // Initialize Dynamic Rental Packages (Phase 1 Task 2)
+        seedRentalPackages();
+    }
+
+    private void seedRentalPackages() {
+        if (rentalPackageRepository.count() == 0) {
+            log.info("Seeding dynamic rental packages...");
+            rentalPackageRepository.save(RentalPackage.builder()
+                    .name("1 hr 10 km")
+                    .vehicleCategory("ALL")
+                    .includedHours(1.0)
+                    .includedKm(10.0)
+                    .basePackageFare(349.0)
+                    .extraKmPrice(11.0)
+                    .extraHourPrice(90.0)
+                    .bookingFee(18.0)
+                    .taxPercentage(5.0)
+                    .active(true)
+                    .build());
+
+            rentalPackageRepository.save(RentalPackage.builder()
+                    .name("2 hr 20 km")
+                    .vehicleCategory("ALL")
+                    .includedHours(2.0)
+                    .includedKm(20.0)
+                    .basePackageFare(599.0)
+                    .extraKmPrice(11.0)
+                    .extraHourPrice(90.0)
+                    .bookingFee(18.0)
+                    .taxPercentage(5.0)
+                    .active(true)
+                    .build());
+
+            rentalPackageRepository.save(RentalPackage.builder()
+                    .name("4 hr 40 km")
+                    .vehicleCategory("ALL")
+                    .includedHours(4.0)
+                    .includedKm(40.0)
+                    .basePackageFare(1099.0)
+                    .extraKmPrice(11.0)
+                    .extraHourPrice(90.0)
+                    .bookingFee(18.0)
+                    .taxPercentage(5.0)
+                    .active(true)
+                    .build());
+
+            rentalPackageRepository.save(RentalPackage.builder()
+                    .name("8 hr 80 km")
+                    .vehicleCategory("ALL")
+                    .includedHours(8.0)
+                    .includedKm(80.0)
+                    .basePackageFare(1999.0)
+                    .extraKmPrice(11.0)
+                    .extraHourPrice(90.0)
+                    .bookingFee(18.0)
+                    .taxPercentage(5.0)
+                    .active(true)
+                    .build());
+            log.info("Default rental packages seeded successfully!");
         }
     }
 

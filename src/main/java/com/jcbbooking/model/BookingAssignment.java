@@ -49,4 +49,7 @@ public class BookingAssignment {
 
     @Column(name = "responded_at")
     private LocalDateTime respondedAt;
+
+    @Column(name = "rejection_reason", length = 255)
+    private String rejectionReason;
 }

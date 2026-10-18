@@ -62,6 +62,10 @@ public class BookingSetting {
 	@Column(name = "notify_admin_when_unassigned", nullable = false)
 	private Boolean notifyAdminWhenUnassigned = true;
 
+	@Builder.Default
+	@Column(name = "dispatch_lead_time_minutes", nullable = false)
+	private Integer dispatchLeadTimeMinutes = 30;
+
 	@CreationTimestamp
 	@Column(name = "created_at", nullable = false, updatable = false, columnDefinition = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
 	private LocalDateTime createdAt;
