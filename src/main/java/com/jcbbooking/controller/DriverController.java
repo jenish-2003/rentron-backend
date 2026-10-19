@@ -341,10 +341,19 @@ public class DriverController {
         String effectiveVehicleType = vehicleType;
         if ((effectiveVehicleType == null || effectiveVehicleType.trim().isEmpty()) && productId != null) {
             effectiveVehicleType = productRepository.findById(productId)
-                    .map(p -> p.getProductType() != null ? p.getProductType() : p.getCategory())
+                    .map(p -> {
+                        if (p.getCategory() != null && !p.getCategory().trim().isEmpty() && !"RIDE".equalsIgnoreCase(p.getCategory())) {
+                            return p.getCategory();
+                        }
+                        if (p.getName() != null && !p.getName().trim().isEmpty()) {
+                            return p.getName();
+                        }
+                        return p.getProductType();
+                    })
                     .orElse(null);
         }
 
+        // Query real drivers from database only (NO mock data overwrite)
         List<Driver> activeDrivers = driverRepository.findAllByStatus("ACTIVE");
         java.util.List<java.util.Map<String, Object>> result = new java.util.ArrayList<>();
 

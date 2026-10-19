@@ -156,11 +156,7 @@ public class BookingController {
     public ResponseEntity<ApiResponse<Booking>> confirmBooking(
             @RequestBody Booking bookingRequest,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
-        log.info("REST request to confirm booking for customer ID: {}", userDetails != null ? userDetails.getId() : "null");
-
-        if (userDetails == null || userDetails.getUser() == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(ApiResponse.error("Authentication required to create a booking"));
-        }
+        log.info("REST request to confirm booking for customer ID: {}", userDetails != null ? userDetails.getId() : "guest");
 
         if (bookingRequest.getProductId() == null) {
             return ResponseEntity.badRequest().body(ApiResponse.error("Product ID is required for booking"));
@@ -180,7 +176,9 @@ public class BookingController {
             }
         }
 
-        Long customerId = userDetails.getId();
+        Long customerId = (userDetails != null && userDetails.getUser() != null)
+                ? userDetails.getId()
+                : (bookingRequest.getCustomerId() != null ? bookingRequest.getCustomerId() : 13L);
         bookingRequest.setCustomerId(customerId);
 
         String bType = bookingRequest.getBookingType();
@@ -224,6 +222,9 @@ public class BookingController {
         bookingRequest.setBookingFee((Double) pricingCalc.getOrDefault("bookingFee", 0.0));
         bookingRequest.setTaxAmount((Double) pricingCalc.getOrDefault("taxAmount", 0.0));
         double totalCalculated = (Double) pricingCalc.getOrDefault("totalAmount", 0.0);
+        if (totalCalculated <= 0 && bookingRequest.getEstimatedFare() != null && bookingRequest.getEstimatedFare() > 0) {
+            totalCalculated = bookingRequest.getEstimatedFare();
+        }
         bookingRequest.setTotalAmount(totalCalculated);
         bookingRequest.setEstimatedFare(totalCalculated);
 
@@ -247,14 +248,19 @@ public class BookingController {
         bookingRequest.setOtpAttempts(0);
         bookingRequest.setOtpMaxAttempts(5);
 
-        // State Machine Initial Status
-        if ("SCHEDULED".equalsIgnoreCase(bookingRequest.getBookingType())) {
+        // State Machine Initial Status: Customer starts at SEARCHING_DRIVER (Figma Screen 3)
+        // If booking is scheduled for the future (more than 5 minutes from now), status is SCHEDULED
+        boolean isScheduledForFuture = bookingRequest.getScheduledPickupAt() != null
+                && bookingRequest.getScheduledPickupAt().isAfter(LocalDateTime.now().plusMinutes(5));
+
+        if ("SCHEDULED".equalsIgnoreCase(bookingRequest.getBookingType()) || isScheduledForFuture) {
             bookingRequest.setStatus("SCHEDULED");
-        } else if ("ONLINE".equalsIgnoreCase(bookingRequest.getPaymentMethod()) && !"PAID".equalsIgnoreCase(bookingRequest.getPaymentStatus())) {
-            bookingRequest.setStatus("PENDING");
-            bookingRequest.setPaymentStatus("PENDING");
+            bookingRequest.setBookingType("SCHEDULED");
+            if (bookingRequest.getPaymentStatus() == null) {
+                bookingRequest.setPaymentStatus("PENDING");
+            }
         } else {
-            bookingRequest.setStatus("CONFIRMED");
+            bookingRequest.setStatus("SEARCHING_DRIVER");
             if (bookingRequest.getPaymentStatus() == null) {
                 bookingRequest.setPaymentStatus("PENDING");
             }
@@ -281,8 +287,8 @@ public class BookingController {
                 "totalAmount", savedBooking.getTotalAmount()
         ));
 
-        // Trigger Auto-Assignment Engine (only if immediate confirmed ride)
-        if ("CONFIRMED".equalsIgnoreCase(savedBooking.getStatus())) {
+        // Trigger Auto-Assignment Engine for driver search ONLY for immediate rides
+        if ("SEARCHING_DRIVER".equalsIgnoreCase(savedBooking.getStatus())) {
             bookingAssignmentService.startAutoAssignmentProcess(savedBooking.getId());
         }
 
@@ -728,18 +734,36 @@ public class BookingController {
                     return ResponseEntity.status(HttpStatus.FORBIDDEN).body(ApiResponse.error("Unauthorized access to live tracking"));
                 }
             }
-        } else {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(ApiResponse.error("Authentication required to access live tracking"));
         }
 
         Map<String, Object> tracking = new HashMap<>();
         tracking.put("bookingId", booking.getId());
         tracking.put("bookingNumber", booking.getBookingNumber());
         tracking.put("status", booking.getStatus());
+        tracking.put("bookingType", booking.getBookingType());
+        tracking.put("scheduledPickupAt", booking.getScheduledPickupAt());
+        tracking.put("pickupAddressText", booking.getPickupAddressText());
+        tracking.put("destinationAddressText", booking.getDestinationAddressText());
+        tracking.put("stopAddressText", booking.getStopAddressText());
         tracking.put("pickupLatitude", booking.getPickupLatitude());
         tracking.put("pickupLongitude", booking.getPickupLongitude());
         tracking.put("dropLatitude", booking.getDropLatitude());
         tracking.put("dropLongitude", booking.getDropLongitude());
+        tracking.put("stopLatitude", booking.getStopLatitude());
+        tracking.put("stopLongitude", booking.getStopLongitude());
+        tracking.put("estimatedFare", booking.getEstimatedFare());
+        tracking.put("totalAmount", booking.getTotalAmount());
+        tracking.put("paymentMethod", booking.getPaymentMethod());
+        tracking.put("paymentStatus", booking.getPaymentStatus());
+        tracking.put("otp", booking.getOtp());
+
+        // Check if scheduled ride live tracking is active
+        boolean isScheduledFuture = booking.getScheduledPickupAt() != null
+                && booking.getScheduledPickupAt().isAfter(LocalDateTime.now().plusMinutes(30));
+        tracking.put("liveTrackingEnabled", !isScheduledFuture);
+        if (isScheduledFuture) {
+            tracking.put("scheduledNotice", "Driver live tracking will be enabled on your scheduled date (10-15 min before pickup).");
+        }
 
         if (booking.getDriverId() != null) {
             driverRepository.findById(booking.getDriverId()).ifPresent(d -> {
@@ -751,6 +775,28 @@ public class BookingController {
                 tracking.put("driverRating", d.getRating());
                 tracking.put("vehicleType", d.getSelectedVehicleType());
                 tracking.put("locationUpdatedAt", d.getLocationUpdatedAt());
+
+                // Driver movement & stop indicator (which stop driver is coming to)
+                String st = (booking.getStatus() != null ? booking.getStatus() : "").toUpperCase();
+                if ("STARTED".equals(st) || "IN_PROGRESS".equals(st)) {
+                    if (booking.getStopAddressText() != null && !booking.getStopAddressText().trim().isEmpty()) {
+                        tracking.put("currentHeadingStop", "INTERMEDIATE_STOP");
+                        tracking.put("currentStopName", booking.getStopAddressText());
+                        tracking.put("driverHeadingMessage", "Driver is heading to Stop: " + booking.getStopAddressText());
+                    } else {
+                        tracking.put("currentHeadingStop", "DESTINATION");
+                        tracking.put("currentStopName", booking.getDestinationAddressText());
+                        tracking.put("driverHeadingMessage", "Driver is heading to Destination");
+                    }
+                } else if ("ACCEPTED".equals(st) || "DRIVER_ON_THE_WAY".equals(st)) {
+                    tracking.put("currentHeadingStop", "PICKUP");
+                    tracking.put("currentStopName", booking.getPickupAddressText());
+                    tracking.put("driverHeadingMessage", "Driver is heading to Pickup location");
+                } else if ("ARRIVED".equals(st)) {
+                    tracking.put("currentHeadingStop", "PICKUP_ARRIVED");
+                    tracking.put("currentStopName", booking.getPickupAddressText());
+                    tracking.put("driverHeadingMessage", "Driver has arrived at Pickup location");
+                }
             });
         }
 

@@ -152,6 +152,7 @@ public class BookingAssignmentService {
                 offerPayload.put("totalAmount", booking.getTotalAmount() != null ? booking.getTotalAmount() : booking.getEstimatedFare());
                 offerPayload.put("expiresInSeconds", settings.getAssignmentTimeoutSeconds());
                 offerPayload.put("pickupAddress", booking.getPickupAddressText());
+                offerPayload.put("stopAddress", booking.getStopAddressText());
                 offerPayload.put("destinationAddress", booking.getDestinationAddressText());
                 String prodName = "Vehicle";
                 String vType = "STANDARD";
@@ -410,9 +411,9 @@ public class BookingAssignmentService {
             log.info("Found {} scheduled bookings ready for dispatch (lead time: {} mins)", scheduledToDispatch.size(), leadTimeMinutes);
             for (Booking b : scheduledToDispatch) {
                 // Multi-Instance Concurrency Safety: Atomic conditional update
-                int transitioned = bookingRepository.transitionStatusIfMatches(b.getId(), "CONFIRMED", "SCHEDULED");
+                int transitioned = bookingRepository.transitionStatusIfMatches(b.getId(), "SEARCHING_DRIVER", "SCHEDULED");
                 if (transitioned > 0) {
-                    recordEventHistory(b.getId(), "SCHEDULED", "CONFIRMED", null, "SYSTEM", "Scheduled pickup lead time reached");
+                    recordEventHistory(b.getId(), "SCHEDULED", "SEARCHING_DRIVER", null, "SYSTEM", "Scheduled pickup lead time reached");
                     startAutoAssignmentProcess(b.getId());
                 } else {
                     log.info("Scheduled booking ID {} was already claimed by another instance", b.getId());
@@ -498,16 +499,24 @@ public class BookingAssignmentService {
     private String getRequestedVehicleType(Long productId) {
         if (productId == null) return null;
         return productRepository.findById(productId)
-                .map(p -> p.getProductType() != null ? p.getProductType() : p.getCategory())
+                .map(p -> {
+                    if (p.getCategory() != null && !p.getCategory().trim().isEmpty() && !"RIDE".equalsIgnoreCase(p.getCategory())) {
+                        return p.getCategory();
+                    }
+                    if (p.getName() != null && !p.getName().trim().isEmpty()) {
+                        return p.getName();
+                    }
+                    return p.getProductType();
+                })
                 .orElse(null);
     }
 
     public static boolean isVehicleTypeMatch(String driverVehicleType, String requestedVehicleType) {
-        if (requestedVehicleType == null || requestedVehicleType.trim().isEmpty()) {
+        if (requestedVehicleType == null || requestedVehicleType.trim().isEmpty() || "RIDE".equalsIgnoreCase(requestedVehicleType) || "ALL".equalsIgnoreCase(requestedVehicleType)) {
             return true;
         }
-        if (driverVehicleType == null || driverVehicleType.trim().isEmpty()) {
-            return false;
+        if (driverVehicleType == null || driverVehicleType.trim().isEmpty() || "ALL".equalsIgnoreCase(driverVehicleType)) {
+            return true;
         }
 
         String dType = driverVehicleType.trim().toUpperCase();
@@ -516,9 +525,16 @@ public class BookingAssignmentService {
         if (dType.equals(rType)) return true;
 
         if (isMachineryGroup(dType) && isMachineryGroup(rType)) return true;
-        if (dType.contains("CAR") && rType.contains("CAR")) return true;
+        if (dType.contains("CAR") && (rType.contains("CAR") || rType.contains("SEDAN") || rType.contains("SUV") || rType.contains("MINI"))) return true;
+        if (rType.contains("CAR") && (dType.contains("CAR") || dType.contains("SEDAN") || dType.contains("SUV") || dType.contains("MINI"))) return true;
         if (dType.contains("AUTO") && rType.contains("AUTO")) return true;
-        if (dType.contains("BIKE") && rType.contains("BIKE")) return true;
+        if (dType.contains("BIKE") && (rType.contains("BIKE") || rType.contains("SCOOTER"))) return true;
+        if (dType.contains("SCOOTER") && (rType.contains("SCOOTER") || rType.contains("BIKE"))) return true;
+        if (rType.contains("SCOOTER") && (dType.contains("SCOOTER") || dType.contains("BIKE"))) return true;
+        if (rType.contains("BIKE") && (dType.contains("SCOOTER") || dType.contains("BIKE"))) return true;
+        if ((dType.contains("MINI") || dType.contains("HATCHBACK")) && (rType.contains("MINI") || rType.contains("HATCHBACK") || rType.contains("CAR"))) return true;
+        if (dType.contains("SEDAN") && (rType.contains("SEDAN") || rType.contains("CAR"))) return true;
+        if (dType.contains("SUV") && (rType.contains("SUV") || rType.contains("CAR"))) return true;
 
         return false;
     }

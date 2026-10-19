@@ -68,6 +68,9 @@ public class WebSocketNotificationService {
             event.put("timestamp", LocalDateTime.now().toString());
             event.put("version", "1.0");
             event.put("payload", offerPayload);
+            if (offerPayload != null) {
+                event.putAll(offerPayload);
+            }
 
             messagingTemplate.convertAndSendToUser(
                     String.valueOf(userId),

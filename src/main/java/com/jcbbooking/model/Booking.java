@@ -53,8 +53,21 @@ public class Booking {
     @Column(name = "outstation_trip_type", length = 30)
     private String outstationTripType; // ONE_WAY, ROUND_TRIP
 
+    @com.fasterxml.jackson.annotation.JsonAlias({"scheduledPickupAt", "scheduledAt"})
     @Column(name = "scheduled_pickup_at")
     private LocalDateTime scheduledPickupAt;
+
+    @com.fasterxml.jackson.annotation.JsonAlias({"stopAddressText", "stopAddress"})
+    @Column(name = "stop_address_text", length = 500)
+    private String stopAddressText;
+
+    @com.fasterxml.jackson.annotation.JsonAlias({"stopLatitude", "stopLat"})
+    @Column(name = "stop_latitude")
+    private Double stopLatitude;
+
+    @com.fasterxml.jackson.annotation.JsonAlias({"stopLongitude", "stopLng"})
+    @Column(name = "stop_longitude")
+    private Double stopLongitude;
 
     @Column(name = "return_at")
     private LocalDateTime returnAt;
@@ -65,9 +78,11 @@ public class Booking {
     @Column(name = "return_time", length = 30)
     private String returnTime;
 
+    @com.fasterxml.jackson.annotation.JsonAlias({"pickupAddressText", "pickupAddress"})
     @Column(name = "pickup_address_text", length = 500)
     private String pickupAddressText;
 
+    @com.fasterxml.jackson.annotation.JsonAlias({"destinationAddressText", "destinationAddress", "dropAddress"})
     @Column(name = "destination_address_text", length = 500)
     private String destinationAddressText;
 

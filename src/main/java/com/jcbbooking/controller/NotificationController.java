@@ -129,20 +129,42 @@ public class NotificationController {
             return ResponseEntity.badRequest().body(ApiResponse.error("deviceToken is required"));
         }
 
-        Long userId = userDetails.getId();
+        Long userId = userDetails != null ? userDetails.getId() : null;
+        if (userId == null && body != null && body.containsKey("userId")) {
+            try {
+                userId = Long.parseLong(body.get("userId"));
+            } catch (Exception ignored) {}
+        }
+
+        if (userId == null) {
+            return ResponseEntity.badRequest().body(ApiResponse.error("Authenticated user or valid userId is required"));
+        }
+
+        final Long effectiveUserId = userId;
         final String effectiveToken = tokenVal.trim();
         final String effectivePlatform = platVal != null ? platVal : "ANDROID";
         final String effectiveDeviceId = didVal;
 
-        DeviceToken token = deviceTokenRepository.findByUserIdAndDeviceToken(userId, effectiveToken)
+        // Multi-device handling: deactivate other active device tokens for this user
+        List<DeviceToken> existingTokens = deviceTokenRepository.findAllByUserIdAndActiveTrue(effectiveUserId);
+        for (DeviceToken dt : existingTokens) {
+            if (!effectiveToken.equals(dt.getDeviceToken())) {
+                dt.setActive(false);
+                deviceTokenRepository.save(dt);
+            }
+        }
+
+        DeviceToken token = deviceTokenRepository.findByUserIdAndDeviceToken(effectiveUserId, effectiveToken)
                 .orElseGet(() -> DeviceToken.builder()
-                        .userId(userId)
+                        .userId(effectiveUserId)
                         .deviceToken(effectiveToken)
                         .platform(effectivePlatform)
                         .deviceId(effectiveDeviceId)
                         .build());
 
         token.setActive(true);
+        token.setPlatform(effectivePlatform);
+        if (effectiveDeviceId != null) token.setDeviceId(effectiveDeviceId);
         token.setLastSeenAt(LocalDateTime.now());
         DeviceToken saved = deviceTokenRepository.save(token);
 

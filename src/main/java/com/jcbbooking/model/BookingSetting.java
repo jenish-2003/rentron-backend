@@ -80,4 +80,51 @@ public class BookingSetting {
 	@Builder.Default
 	@Column(name = "support_phone", length = 30)
 	private String supportPhone = "+91 98765 43210";
+
+	// --- Push Notification Configuration (FCM) ---
+	@Column(name = "fcm_server_key", length = 500)
+	private String fcmServerKey;
+
+	@Column(name = "fcm_project_id", length = 150)
+	private String fcmProjectId;
+
+	@Builder.Default
+	@Column(name = "push_enabled", nullable = false)
+	private Boolean pushEnabled = true;
+
+	// --- Email SMTP Configuration ---
+	@Column(name = "smtp_host", length = 150)
+	private String smtpHost;
+
+	@Builder.Default
+	@Column(name = "smtp_port")
+	private Integer smtpPort = 587;
+
+	@Column(name = "smtp_username", length = 150)
+	private String smtpUsername;
+
+	@Column(name = "smtp_password", length = 150)
+	private String smtpPassword;
+
+	@Column(name = "smtp_from_email", length = 150)
+	private String smtpFromEmail;
+
+	@Builder.Default
+	@Column(name = "smtp_enabled", nullable = false)
+	private Boolean smtpEnabled = false;
+
+	// --- Fast2SMS Configuration ---
+	@Column(name = "fast2sms_api_key", length = 200)
+	private String fast2smsApiKey;
+
+	@Column(name = "fast2sms_sender_id", length = 50)
+	private String fast2smsSenderId;
+
+	@Builder.Default
+	@Column(name = "fast2sms_route", length = 20)
+	private String fast2smsRoute = "v3";
+
+	@Builder.Default
+	@Column(name = "sms_enabled", nullable = false)
+	private Boolean smsEnabled = false;
 }

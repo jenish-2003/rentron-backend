@@ -45,6 +45,19 @@ public class BookingSettingController {
                 .notifyAdminWhenUnassigned(settings.getNotifyAdminWhenUnassigned())
                 .mapKey(settings.getMapKey())
                 .supportPhone(settings.getSupportPhone())
+                .fcmServerKey(settings.getFcmServerKey() != null ? "******" : null)
+                .fcmProjectId(settings.getFcmProjectId())
+                .pushEnabled(settings.getPushEnabled())
+                .smtpHost(settings.getSmtpHost())
+                .smtpPort(settings.getSmtpPort())
+                .smtpUsername(settings.getSmtpUsername())
+                .smtpPassword(settings.getSmtpPassword() != null ? "******" : null)
+                .smtpFromEmail(settings.getSmtpFromEmail())
+                .smtpEnabled(settings.getSmtpEnabled())
+                .fast2smsApiKey(settings.getFast2smsApiKey() != null ? "******" : null)
+                .fast2smsSenderId(settings.getFast2smsSenderId())
+                .fast2smsRoute(settings.getFast2smsRoute())
+                .smsEnabled(settings.getSmsEnabled())
                 .createdAt(settings.getCreatedAt())
                 .updatedAt(settings.getUpdatedAt())
                 .build();
@@ -75,6 +88,31 @@ public class BookingSettingController {
         if (request.getNotifyAdminWhenUnassigned() != null) existing.setNotifyAdminWhenUnassigned(request.getNotifyAdminWhenUnassigned());
         if (request.getMapKey() != null) existing.setMapKey(request.getMapKey());
         if (request.getSupportPhone() != null) existing.setSupportPhone(request.getSupportPhone());
+
+        // Push settings
+        if (request.getFcmServerKey() != null && !request.getFcmServerKey().isEmpty() && !"******".equals(request.getFcmServerKey())) {
+            existing.setFcmServerKey(request.getFcmServerKey());
+        }
+        if (request.getFcmProjectId() != null) existing.setFcmProjectId(request.getFcmProjectId());
+        if (request.getPushEnabled() != null) existing.setPushEnabled(request.getPushEnabled());
+
+        // SMTP settings
+        if (request.getSmtpHost() != null) existing.setSmtpHost(request.getSmtpHost());
+        if (request.getSmtpPort() != null) existing.setSmtpPort(request.getSmtpPort());
+        if (request.getSmtpUsername() != null) existing.setSmtpUsername(request.getSmtpUsername());
+        if (request.getSmtpPassword() != null && !request.getSmtpPassword().isEmpty() && !"******".equals(request.getSmtpPassword())) {
+            existing.setSmtpPassword(request.getSmtpPassword());
+        }
+        if (request.getSmtpFromEmail() != null) existing.setSmtpFromEmail(request.getSmtpFromEmail());
+        if (request.getSmtpEnabled() != null) existing.setSmtpEnabled(request.getSmtpEnabled());
+
+        // Fast2SMS settings
+        if (request.getFast2smsApiKey() != null && !request.getFast2smsApiKey().isEmpty() && !"******".equals(request.getFast2smsApiKey())) {
+            existing.setFast2smsApiKey(request.getFast2smsApiKey());
+        }
+        if (request.getFast2smsSenderId() != null) existing.setFast2smsSenderId(request.getFast2smsSenderId());
+        if (request.getFast2smsRoute() != null) existing.setFast2smsRoute(request.getFast2smsRoute());
+        if (request.getSmsEnabled() != null) existing.setSmsEnabled(request.getSmsEnabled());
 
         BookingSetting saved = bookingSettingRepository.save(existing);
         return ResponseEntity.ok(ApiResponse.success("Booking settings updated successfully", saved));

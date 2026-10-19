@@ -31,6 +31,7 @@ public class DatabaseInitializer implements CommandLineRunner {
     private final ProductRepository productRepository;
     private final VehicleRepository vehicleRepository;
     private final RentalPackageRepository rentalPackageRepository;
+    private final PricingRepository pricingRepository;
 
     @Override
     @Transactional
@@ -526,7 +527,106 @@ public class DatabaseInitializer implements CommandLineRunner {
                     .build());
         }
 
+        seedFigmaRideProductsAndPricing();
+
         log.info("System successfully seeded and ready!");
+    }
+
+    private void seedFigmaRideProductsAndPricing() {
+        log.info("Ensuring dynamic ride products and pricings match Figma specification...");
+        // 1. Auto - ₹143
+        seedOrUpdateRideProduct("Auto", "PROD_AUTO", "AUTO", "Reliable 3-wheeler auto rickshaw", 143.0, 14.0);
+        // 2. Bike - ₹98
+        seedOrUpdateRideProduct("Bike", "PROD_BIKE", "BIKE", "Fastest two-wheeler city bike ride", 98.0, 9.0);
+        // 3. Scooter - ₹100
+        seedOrUpdateRideProduct("Scooter", "PROD_SCOOTER", "BIKE", "Easy city gearless scooter ride", 100.0, 9.5);
+        // 4. Mini - ₹243
+        seedOrUpdateRideProduct("Mini", "PROD_MINI", "HATCHBACK", "Affordable and compact 4-seater hatchback", 243.0, 16.0);
+        // 5. Prime Sedan - ₹165
+        seedOrUpdateRideProduct("Prime Sedan", "PROD_SEDAN", "SEDAN", "Spacious top-rated sedans with extra legroom", 165.0, 17.0);
+        // 6. Prime SUV - ₹225
+        seedOrUpdateRideProduct("Prime SUV", "PROD_SUV", "SUV", "Spacious 6-seater premium SUVs", 225.0, 21.0);
+
+        // Seed Driver Naresh S (TS 34 T 7080, White Toyota Innova, rating 4.8) if missing
+        if (driverRepository.findByPhone("+919811122399").isEmpty()) {
+            Driver naresh = driverRepository.save(Driver.builder()
+                    .fullName("Naresh S")
+                    .phone("+919811122399")
+                    .email("naresh.s@rentron.com")
+                    .licenseNumber("DL-0420220078901")
+                    .aadhaarNumber("667788990011")
+                    .experience("7 years")
+                    .rating(4.8)
+                    .totalJobs(189)
+                    .totalEarnings(24500.0)
+                    .status("ACTIVE")
+                    .isOnline(true)
+                    .latitude(12.9226)
+                    .longitude(80.1275)
+                    .city("Chennai")
+                    .selectedVehicleType("SUV")
+                    .selectedMachineryModel("Toyota Innova")
+                    .build());
+
+            vehicleRepository.save(Vehicle.builder()
+                    .driverId(naresh.getId())
+                    .regNumber("TS 34 T 7080")
+                    .vehicleName("White Toyota Innova")
+                    .category("Car")
+                    .machineryModel("Toyota Innova Crysta")
+                    .status("APPROVED")
+                    .isActive(true)
+                    .driverName("Naresh S")
+                    .driverPhone("+919811122399")
+                    .powertrain("DIESEL")
+                    .build());
+            log.info("Seeded Figma mock driver Naresh S (TS 34 T 7080)");
+        }
+    }
+
+    private void seedOrUpdateRideProduct(String name, String code, String category, String description, double price, double perKm) {
+        Product product = productRepository.findByCode(code).orElse(null);
+        if (product == null) {
+            product = Product.builder()
+                    .name(name)
+                    .code(code)
+                    .productType("RIDE")
+                    .category(category)
+                    .description(description)
+                    .active(true)
+                    .build();
+            product = productRepository.save(product);
+            log.info("Created ride product: {}", name);
+        } else {
+            product.setName(name);
+            product.setCategory(category);
+            product.setProductType("RIDE");
+            product.setActive(true);
+            product = productRepository.save(product);
+        }
+
+        Pricing pricing = pricingRepository.findByProductId(product.getId()).orElse(null);
+        if (pricing == null) {
+            pricing = Pricing.builder()
+                    .productId(product.getId())
+                    .pricingModel("RIDE")
+                    .chargingMethod("HOURLY")
+                    .basePrice(price)
+                    .minimumFare(price)
+                    .perKmPrice(perKm)
+                    .bookingFee(18.0)
+                    .taxPercentage(5.0)
+                    .active(true)
+                    .build();
+            pricingRepository.save(pricing);
+            log.info("Created pricing for {}: basePrice = {}", name, price);
+        } else {
+            pricing.setBasePrice(price);
+            pricing.setMinimumFare(price);
+            pricing.setPerKmPrice(perKm);
+            pricing.setActive(true);
+            pricingRepository.save(pricing);
+        }
     }
 
     private Permission createPermission(String name, String code) {
